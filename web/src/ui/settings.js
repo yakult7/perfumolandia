@@ -20,6 +20,11 @@ const TABS = [
 export function Settings({ tab: t0 = 'account' }) {
   const [tab, setTab] = useState(t0);
   const mobile = useMedia('(max-width: 899px)');
+  useEffect(() => {
+    const k = (e) => e.key === 'Escape' && closeModal();
+    addEventListener('keydown', k);
+    return () => removeEventListener('keydown', k);
+  }, []);
   const items = TABS.map((t) => ({ key: t.key, title: t.label, render: () => html`<${Icon} n=${t.icon} s=${18} /><span>${t.label}</span>` }));
   return html`
     <div class="settings-wrap" onPointerDown=${(e) => e.target === e.currentTarget && closeModal()}>
