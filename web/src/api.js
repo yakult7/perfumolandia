@@ -342,7 +342,8 @@ export async function joinRoomChannel(roomId, handlers) {
   if (roomChan) await sb.removeChannel(roomChan).catch(() => {});
   roomChan = sb.channel('room:' + roomId, { config: { broadcast: { self: false, ack: false } } })
     .on('broadcast', { event: 'sig' }, ({ payload }) => { if (payload.to === clientId) handlers.signal(payload); })
-    .on('broadcast', { event: 'watch' }, ({ payload }) => { if (payload.to === clientId) handlers.watch(payload); });
+    .on('broadcast', { event: 'watch' }, ({ payload }) => { if (payload.to === clientId) handlers.watch(payload); })
+    .on('broadcast', { event: 'nsig' }, ({ payload }) => { if (payload.to === clientId) handlers.nsignal(payload); });
   await new Promise((res) => roomChan.subscribe((st) => { if (st === 'SUBSCRIBED') res(); }));
 }
 export async function leaveRoomChannel() {
@@ -369,6 +370,10 @@ function flushCands() {
     roomChan?.send({ type: 'broadcast', event: 'sig', payload: { to, from: clientId, data: { candidates: list } } });
   }
   pendingCands = {};
+}
+/** sinalização da tela nativa do celular (conexão separada, sem lote) */
+export function sendNativeSignal(to, data) {
+  roomChan?.send({ type: 'broadcast', event: 'nsig', payload: { to, from: clientId, data } });
 }
 export function sendWatch(to, watch) {
   roomChan?.send({ type: 'broadcast', event: 'watch', payload: { to, from: clientId, watch } });

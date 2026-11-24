@@ -183,9 +183,8 @@ export function ScreenShareModal() {
   if (nativeScreen.available) {
     return html`
       <${Modal} title="Transmitir tela do celular">
-        <p class="muted">O celular vai pedir permissão para gravar a tela. A transmissão sai na resolução da tela do aparelho.</p>
-        <label class="check"><input type="checkbox" checked=${st.screenAudio} onChange=${(e) => setSettings({ screenAudio: e.target.checked })} /> Incluir áudio do celular (Android 10+)</label>
-        <button class="gbtn primary wide" onClick=${() => { closeModal(); nativeScreen.start({ audio: st.screenAudio }); }}><${Icon} n="screen" /> Começar</button>
+        <p class="muted">O celular vai pedir permissão para gravar a tela. Sai em até 1080p a 30 fps, sem o áudio do jogo (sua voz continua pelo microfone).</p>
+        <button class="gbtn primary wide" onClick=${() => { closeModal(); nativeScreen.start({}); }}><${Icon} n="screen" /> Começar</button>
       <//>`;
   }
 

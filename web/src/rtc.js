@@ -20,7 +20,7 @@ export const CAM = {
 };
 
 const iceServers = () => [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }, ...(TURN ? [TURN] : [])];
-const local = { mic: null, cam: null, screen: null, screenOpts: null };
+const local = { mic: null, cam: null, screen: null, screenOpts: null, native: null };
 const peers = new Map(); // sid -> Peer
 const pendingWatch = new Map();
 let pttDown = false;
@@ -34,13 +34,15 @@ function streamsMap() {
   if (local.mic) m[local.mic.id] = 'mic';
   if (local.cam) m[local.cam.id] = 'cam';
   if (local.screen) m[local.screen.id] = 'screen';
+  if (local.native) m[local.native.streamId] = 'screen';
   return m;
 }
 function myState() {
   const c = S.call;
+  const sharing = !!local.screen || !!local.native;
   return {
-    muted: !!c.muted, deafened: !!c.deafened, camera: !!local.cam, screen: !!local.screen,
-    streams: streamsMap(), screenLabel: local.screen ? c.screenLabel : null,
+    muted: !!c.muted, deafened: !!c.deafened, camera: !!local.cam, screen: sharing,
+    streams: streamsMap(), screenLabel: sharing ? c.screenLabel : null,
   };
 }
 const publish = () => S.call && api.setVoicePresence(S.call.roomId, myState());
@@ -182,6 +184,7 @@ class Peer {
   }
   kindOf(streamId) { return this.state?.streams?.[streamId]; }
   getStream(kind) {
+    if (kind === 'screen' && this.nativeRx?.stream) return this.nativeRx.stream;
     for (const [id, k] of Object.entries(this.state?.streams || {})) {
       if (k === kind && this.remote.has(id)) return this.remote.get(id);
     }
@@ -205,10 +208,87 @@ class Peer {
     this.audio.delete(id);
     unwatchLevel(id);
   }
+  closeNativeRx() {
+    try { this.nativeRx?.pc.close(); } catch {}
+    this.nativeRx = null;
+  }
   close() {
     for (const id of [...this.audio.keys()]) this.detachAudio(id);
+    this.closeNativeRx();
     try { this.pc.close(); } catch {}
   }
+}
+
+// ---------- tela nativa do celular (conexão separada) ----------
+async function onNativeSignal({ from, data }) {
+  try {
+    if (data.dir === 'v2s') {
+      // eu transmito do celular; quem assiste respondeu
+      const plugin = local.native?.plugin;
+      if (!plugin) return;
+      if (data.description) await plugin.answer({ peerId: from, sdp: data.description.sdp });
+      if (data.candidate) await plugin.addIce({ peerId: from, candidate: data.candidate });
+      return;
+    }
+    // eu assisto a tela de um celular
+    const peer = peers.get(from);
+    if (!peer) return;
+    if (data.description?.type === 'offer') {
+      peer.closeNativeRx();
+      const pc = new RTCPeerConnection({ iceServers: iceServers(), bundlePolicy: 'max-bundle' });
+      peer.nativeRx = { pc, stream: null };
+      pc.ontrack = (e) => { if (peer.nativeRx?.pc === pc) { peer.nativeRx.stream = e.streams[0] || new MediaStream([e.track]); bump(); } };
+      pc.onicecandidate = ({ candidate }) => candidate && api.sendNativeSignal(from, { dir: 'v2s', candidate: candidate.toJSON() });
+      await pc.setRemoteDescription(data.description);
+      await pc.setLocalDescription();
+      api.sendNativeSignal(from, { dir: 'v2s', description: { type: 'answer', sdp: pc.localDescription.sdp } });
+    } else if (data.candidate && peer.nativeRx) {
+      await peer.nativeRx.pc.addIceCandidate(data.candidate).catch(() => {});
+    }
+  } catch (e) { console.warn('tela nativa', e); }
+}
+
+async function nativeOffer(sid) {
+  const n = local.native;
+  if (!n) return;
+  try {
+    const o = await n.plugin.offer({ peerId: sid });
+    api.sendNativeSignal(sid, { dir: 's2v', description: { type: 'offer', sdp: o.sdp } });
+  } catch (e) { console.warn('oferta nativa', e); }
+}
+
+export async function startNativeScreen(plugin, opts = {}) {
+  if (!S.call || local.native) return;
+  let r;
+  try {
+    r = await plugin.start({ iceServers: iceServers(), fps: 30, maxKbps: 8000, audio: !!opts.audio });
+  } catch (e) {
+    toast(e.message || 'Não foi possível transmitir a tela.', 'err');
+    return;
+  }
+  const subs = [
+    await plugin.addListener('ice', ({ peerId, candidate }) => api.sendNativeSignal(peerId, { dir: 's2v', candidate })),
+    await plugin.addListener('stopped', () => stopNativeScreen(plugin, true)),
+  ];
+  local.native = { plugin, streamId: r.streamId, subs };
+  const { nativeScreen } = await import('./native.js');
+  nativeScreen.active = true;
+  patchCall({ screenLabel: `${r.width}×${r.height} · celular` });
+  publish();
+  sounds.streamStart();
+  for (const p of peers.values()) if (p.wantsScreen) nativeOffer(p.sid);
+}
+
+export async function stopNativeScreen(plugin, alreadyStopped = false) {
+  const n = local.native;
+  if (!n) return;
+  local.native = null;
+  for (const s of n.subs) s?.remove?.();
+  if (!alreadyStopped) await (plugin || n.plugin).stop().catch(() => {});
+  const { nativeScreen } = await import('./native.js');
+  nativeScreen.active = false;
+  patchCall({ screenLabel: null });
+  publish();
 }
 
 // ---------- volume / saída ----------
@@ -323,6 +403,7 @@ export async function join(roomId) {
     await api.joinRoomChannel(roomId, {
       signal: (m) => { const p = peers.get(m.from); if (p) p.onSignal(m.data); else queueEarly(m); },
       watch: onWatch,
+      nsignal: onNativeSignal,
     });
   } catch {
     toast('Não foi possível conectar à chamada.', 'err');
@@ -344,6 +425,7 @@ function queueEarly(m) {
 
 export async function leave(silent = false) {
   if (!S.call) return;
+  if (local.native) await stopNativeScreen();
   for (const p of peers.values()) p.close();
   peers.clear();
   early.clear();
@@ -398,6 +480,10 @@ function onWatch({ from, watch }) {
   const p = peers.get(from);
   if (!p) { pendingWatch.set(from, watch); return; }
   p.wantsScreen = watch;
+  if (local.native) {
+    if (watch) nativeOffer(from); else local.native.plugin.closePeer({ peerId: from }).catch(() => {});
+    return;
+  }
   if (!local.screen) return;
   if (watch) p.send('screen', local.screen); else p.unsend('screen');
 }
@@ -509,6 +595,7 @@ export function stopScreen(silent) {
 export function watch(sid, on) {
   if (!S.call) return;
   patchCall({ watching: { ...S.call.watching, [sid]: on }, focus: on ? { sid, kind: 'screen' } : S.call.focus?.sid === sid ? null : S.call.focus });
+  if (!on) peers.get(sid)?.closeNativeRx();
   api.sendWatch(sid, on);
   applyVolumes();
 }
@@ -536,7 +623,7 @@ export function remoteStream(sid, kind) {
   return peers.get(sid)?.getStream(kind) || null;
 }
 export const connectionOf = (sid) => peers.get(sid)?.pc.connectionState || 'new';
-export const isSharing = () => !!local.screen;
+export const isSharing = () => !!local.screen || !!local.native;
 export const hasCam = () => !!local.cam;
 
 const prevBytes = new Map();
