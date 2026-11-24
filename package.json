@@ -1,0 +1,35 @@
+{
+  "name": "perfumolandia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Perfumolandia - comunicador para os amigos: chat, amizades, chamadas, câmera e tela em 4K",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "desktop": "node scripts/copy-dist.mjs && cd desktop && npx electron .",
+    "desktop:dist": "cd desktop && npm run dist",
+    "android": "vite build && cap sync android",
+    "icons": "node scripts/make-icons.mjs && capacitor-assets generate --android --ios --iconBackgroundColor #ffffff --splashBackgroundColor #07070c",
+    "test:backend": "node scripts/test-backend.mjs",
+    "test:call": "node scripts/copy-dist.mjs && node scripts/e2e-call.mjs"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/ios": "^8.6.2",
+    "@supabase/supabase-js": "^2.119.2",
+    "htm": "^3.1.1",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "^8.6.2",
+    "node-forge": "^1.4.4",
+    "sharp": "^0.35.5",
+    "vite": "^7.3.8"
+  }
+}

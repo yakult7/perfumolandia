@@ -1,0 +1,148 @@
+# Compila tudo a cada envio para a branch main:
+#  - site (link para iPhone/navegador) no GitHub Pages
+#  - APK Android assinado
+#  - app iOS sem assinatura (.ipa) para instalar com Sideloadly
+#  - instalador Windows
+# Os arquivos ficam na Release "latest" do repositório.
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx vite build
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: dist }
+      - uses: actions/upload-artifact@v4
+        with: { name: web-dist, path: dist }
+
+  pages:
+    needs: web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  android:
+    needs: web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: dist }
+      - run: npx cap sync android
+      - name: chave de assinatura
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > $RUNNER_TEMP/perfumolandia.p12
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/perfumolandia.p12" >> $GITHUB_ENV
+          fi
+      - name: compilar APK
+        working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          ls app/build/outputs/apk/release/
+          cp app/build/outputs/apk/release/app-release*.apk ../Perfumolandia.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: android-apk, path: Perfumolandia.apk }
+
+  ios:
+    needs: web
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: dist }
+      - run: npx cap sync ios
+      - name: compilar app iOS (sem assinatura)
+        working-directory: ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry ../../Perfumolandia.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with: { name: ios-ipa, path: Perfumolandia.ipa }
+
+  windows:
+    needs: web
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: desktop/dist }
+      - name: instalador Windows
+        working-directory: desktop
+        shell: bash
+        run: |
+          npm ci
+          cp ../assets/icon-512.png icon.png
+          npx electron-builder --win --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            desktop/release/*.exe
+
+  release:
+    needs: [android, ios, windows]
+    if: always() && needs.android.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: out, merge-multiple: true }
+      - run: ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Perfumolandia (versão mais recente)
+          prerelease: false
+          make_latest: true
+          body: |
+            Baixe para o seu aparelho:
+            - **Windows**: Perfumolandia-Setup (instalador) ou Perfumolandia-Portatil
+            - **Android**: Perfumolandia.apk
+            - **iPhone**: Perfumolandia.ipa (instale com o Sideloadly) ou use o link do site pelo Safari
+          files: |
+            out/*.apk
+            out/*.ipa
+            out/*.exe

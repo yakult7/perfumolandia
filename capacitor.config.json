@@ -1,0 +1,9 @@
+{
+  "appId": "com.perfumolandia.app",
+  "appName": "Perfumolandia",
+  "webDir": "dist",
+  "backgroundColor": "#07070c",
+  "server": { "androidScheme": "https", "iosScheme": "capacitor" },
+  "android": { "allowMixedContent": false, "webContentsDebuggingEnabled": false },
+  "ios": { "contentInset": "never", "allowsLinkPreview": false }
+}

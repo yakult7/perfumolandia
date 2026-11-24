@@ -1,0 +1,12 @@
+node_modules/
+dist/
+desktop/dist/
+desktop/release/
+desktop/icon.png
+keys/
+*.p12
+*.jks
+*.keystore
+.claude/
+.DS_Store
+Thumbs.db
