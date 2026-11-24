@@ -80,7 +80,7 @@ function GroupSettings({ id }) {
   const setIcon = async () => {
     const f = await pickFile();
     if (!f) return;
-    const [a] = await run(api.uploadFiles([f.type === 'image/gif' ? f : await shrinkImage(f, 256)]));
+    const [a] = await run(api.uploadFiles([await shrinkImage(f, 256)]));
     safe(api.updateGroup(id, { icon: a.url }), 'Ícone atualizado.');
   };
   return html`

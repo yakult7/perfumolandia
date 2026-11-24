@@ -1,14 +1,14 @@
 {
   "name": "perfumolandia-desktop",
   "productName": "Perfumolandia",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Perfumolandia para Windows",
   "main": "main.js",
   "private": true,
   "author": "Perfumolandia",
   "scripts": {
     "start": "electron .",
-    "dist": "node ../scripts/copy-dist.mjs && electron-builder --win --x64"
+    "dist": "node ../scripts/copy-dist.mjs && electron-builder --win --x64 --publish never"
   },
   "build": {
     "appId": "com.perfumolandia.app",
@@ -17,19 +17,24 @@
       "main.js",
       "preload.js",
       "keymap.js",
+      "updater.js",
+      "splash.html",
       "dist/**",
       "icon.png"
     ],
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/yakult7/perfumolandia/releases/latest/download"
+      }
+    ],
     "win": {
       "target": [
         {
           "target": "nsis"
-        },
-        {
-          "target": "portable"
         }
       ],
       "icon": "icon.png"
@@ -39,10 +44,7 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "shortcutName": "Perfumolandia",
-      "artifactName": "Perfumolandia-Setup-${version}.exe"
-    },
-    "portable": {
-      "artifactName": "Perfumolandia-Portatil-${version}.exe"
+      "artifactName": "Perfumolandia-Setup.${ext}"
     },
     "npmRebuild": false
   },
@@ -51,7 +53,7 @@
     "electron-builder": "^26.18.0"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "uiohook-napi": "^1.5.5"
   }
 }
-

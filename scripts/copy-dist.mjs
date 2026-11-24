@@ -8,5 +8,5 @@ execSync('npx vite build', { cwd: ROOT, stdio: 'inherit' });
 const dst = path.join(ROOT, 'desktop', 'dist');
 fs.rmSync(dst, { recursive: true, force: true });
 fs.cpSync(path.join(ROOT, 'dist'), dst, { recursive: true });
-fs.copyFileSync(path.join(ROOT, 'assets', 'icon-512.png'), path.join(ROOT, 'desktop', 'icon.png'));
+fs.copyFileSync(path.join(ROOT, 'assets', 'icon-transparent-512.png'), path.join(ROOT, 'desktop', 'icon.png'));
 console.log('dist copiado para desktop/dist');

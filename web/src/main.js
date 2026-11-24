@@ -26,7 +26,7 @@ if (window.perfumolandiaDesktop) {
 }
 render(html`<${App} />`, document.getElementById('app'));
 // acesso para diagnóstico pelo console (F12)
-Promise.all([import('./rtc.js'), import('./actions.js'), import('./store.js')]).then(([rtc, actions, store]) => { window.__p = { api, rtc, S, actions, store }; });
+Promise.all([import('./rtc.js'), import('./actions.js'), import('./store.js'), import('./media.js')]).then(([rtc, actions, store, media]) => { window.__p = { api, rtc, S, actions, store, media }; });
 api.start().catch((e) => {
   console.error(e);
   import('./store.js').then(({ set }) => set((s) => { s.booting = false; }));
@@ -37,7 +37,7 @@ document.addEventListener('visibilitychange', () => document.documentElement.cla
 
 // PWA: service worker (não no app nativo / Electron)
 if ('serviceWorker' in navigator && !isNativeApp && !window.perfumolandiaDesktop && location.protocol === 'https:') {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  navigator.serviceWorker.register('../sw.js', { scope: '../' }).catch(() => {});
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data?.type === 'open' && e.data.url) location.href = e.data.url;
   });

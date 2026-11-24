@@ -32,5 +32,5 @@ export const fmtSize = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : 
 
 export const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 export const isStandalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-export const isElectron = !!window.resenhaDesktop;
+export const isElectron = !!window.perfumolandiaDesktop;
 export const canShareScreen = !!navigator.mediaDevices?.getDisplayMedia && !/Android|iPhone|iPad|iPod/.test(navigator.userAgent) && !(isIOS);

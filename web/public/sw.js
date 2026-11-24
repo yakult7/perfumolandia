@@ -1,6 +1,6 @@
-// Service worker da Perfumolandia: abre mesmo sem internet (mostra a última versão) e mantém o app atualizado.
-const CACHE = 'perfumolandia-v1';
-const SHELL = ['./', './manifest.webmanifest', './icons/icon-192.png', './icons/apple-touch-icon.png'];
+// Service worker da Perfumolandia: abre mesmo sem internet (última versão) e mantém tudo atualizado.
+const CACHE = 'perfumolandia-v3';
+const SHELL = ['./', './app/', './manifest.webmanifest', './icons/icon-192.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
@@ -17,7 +17,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // Supabase e arquivos vão direto
-  // rede primeiro; se falhar, usa o cache
+  // rede primeiro; sem internet, usa o cache (navegação dentro do app cai no app)
   e.respondWith((async () => {
     try {
       const res = await fetch(e.request);
@@ -27,14 +27,17 @@ self.addEventListener('fetch', (e) => {
       }
       return res;
     } catch {
-      return (await caches.match(e.request, { ignoreSearch: true })) || caches.match('./');
+      const hit = await caches.match(e.request, { ignoreSearch: true });
+      if (hit) return hit;
+      if (e.request.mode === 'navigate') return caches.match(url.pathname.includes('/app/') ? './app/' : './');
+      return Response.error();
     }
   })());
 });
 
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const url = e.notification.data?.url || './';
+  const url = e.notification.data?.url || './app/';
   e.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const w of wins) if ('focus' in w) { w.postMessage({ type: 'open', url }); return w.focus(); }

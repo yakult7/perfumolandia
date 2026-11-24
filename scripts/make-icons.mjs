@@ -58,6 +58,9 @@ await square(1024, 0.12, path.join(OUT_ASSETS, 'icon-only.png'));
 await square(1024, 0.22, path.join(OUT_ASSETS, 'icon-foreground.png'), { r: 0, g: 0, b: 0, alpha: 0 });
 await sharp({ create: { width: 1024, height: 1024, channels: 4, background: '#ffffff' } }).png().toFile(path.join(OUT_ASSETS, 'icon-background.png'));
 await square(512, 0.06, path.join(OUT_ASSETS, 'icon-512.png'));
+// ícones só com o logo, fundo transparente (Windows: janela, barra de tarefas, bandeja; favicon do site)
+await square(512, 0.03, path.join(OUT_ASSETS, 'icon-transparent-512.png'), { r: 0, g: 0, b: 0, alpha: 0 });
+await square(64, 0.02, path.join(OUT_WEB, 'favicon.png'), { r: 0, g: 0, b: 0, alpha: 0 });
 // splash
 await square(2732, 0.38, path.join(OUT_ASSETS, 'splash.png'), '#ffffff');
 await square(2732, 0.38, path.join(OUT_ASSETS, 'splash-dark.png'), '#07070c');

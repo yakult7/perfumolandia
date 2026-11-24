@@ -8,11 +8,12 @@ import { closeModal, openModal, run, safe, toast, enableNotifications } from '..
 import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, Video, PasswordInput } from './common.js';
 import { statusMenu } from './shell.js';
 import { ProfileEditor, ProfileCard } from './profile.js';
-import { ACCENTS } from '../theme.js';
+import { ACCENTS, APP_THEMES, appBackground, effectiveMode } from '../theme.js';
 
 const TABS = [
   { key: 'account', label: 'Perfil', icon: 'user' },
   { key: 'look', label: 'Aparência', icon: 'brush' },
+  { key: 'theme', label: 'Tema e cores', icon: 'palette' },
   { key: 'voice', label: 'Voz e vídeo', icon: 'mic' },
   { key: 'screen', label: 'Transmissão', icon: 'screen' },
   { key: 'notify', label: 'Notificações', icon: 'bell' },
@@ -45,6 +46,7 @@ export function Settings({ tab: t0 = 'account' }) {
             ${tab === 'voice' ? html`<${Voice} />` : null}
             ${tab === 'screen' ? html`<${ScreenPrefs} />` : null}
             ${tab === 'look' ? html`<${Look} />` : null}
+            ${tab === 'theme' ? html`<${ThemeEditor} />` : null}
             ${tab === 'notify' ? html`<${Notify} />` : null}
             ${tab === 'security' ? html`<${Security} />` : null}
             ${tab === 'about' ? html`<${About} />` : null}
@@ -210,17 +212,66 @@ function Look() {
         <button class=${st.glassStyle === 'tinted' ? 'on' : ''} onClick=${() => setSettings({ glassStyle: 'tinted' })}>Fosco (mais legível)</button>
       </div>
     </div>
+    <button class="gbtn" onClick=${() => openModal('settings', { tab: 'theme' })}><${Icon} n="palette" s=${15} /> Personalizar cores e degradês</button>
     <div class="group-box">
-      <span class="field-label">Cor de destaque</span>
+      <${Toggle} label="Modo desempenho (jogando)" hint="Desliga refração e desfoque do vidro para gastar menos GPU durante o jogo." value=${st.perfMode} onChange=${(v) => setSettings({ perfMode: v })} />
+      <${Toggle} label="Sons do app" hint="Entrar/sair da chamada, mensagens, mudo." value=${st.sounds} onChange=${(v) => setSettings({ sounds: v })} />
+      ${window.perfumolandiaDesktop?.getAutostart ? html`<${AutostartToggle} />` : null}
+    </div>`;
+}
+
+/** aba Tema e cores: degradês prontos + editor livre (cores, ângulo, intensidade) */
+function ThemeEditor() {
+  const st = useS((s) => s.settings);
+  const mode = effectiveMode(st);
+  const custom = st.appTheme === 'custom';
+  const setColor = (i, v) => { const c = [...st.appColors]; c[i] = v; setSettings({ appTheme: 'custom', appColors: c }); };
+  const toggleThird = () => {
+    const c = [...st.appColors];
+    if (c[2]) c[2] = null; else c[2] = '#0a84ff';
+    setSettings({ appTheme: 'custom', appColors: c });
+  };
+  const preview = (key) => appBackground({ ...st, appTheme: key }, mode) || 'var(--bg)';
+  return html`
+    <div class="theme-preview" style=${`background:${appBackground(st, mode) || 'var(--bg)'}`}>
+      <div class="tp-side"><span class="tp-line" style="width:70%"></span><span class="tp-line"></span><span class="tp-line" style="width:50%"></span></div>
+      <div class="tp-main"><span class="tp-bubble">bora jogar hoje?</span><span class="tp-bubble me">bora! 🎮</span></div>
+    </div>
+    <div class="group-box">
+      <span class="field-label">Degradês prontos</span>
+      <div class="wp-grid">
+        ${Object.entries(APP_THEMES).map(([k, th]) => html`
+          <button key=${k} class=${cx('wp-item', st.appTheme === k && 'on')} style=${`background:${preview(k)}`} onClick=${() => setSettings({ appTheme: k })}><span>${th.name}</span></button>`)}
+        <button class=${cx('wp-item', custom && 'on')} style=${`background:${preview('custom')}`} onClick=${() => setSettings({ appTheme: 'custom' })}><span>Personalizado</span></button>
+      </div>
+    </div>
+    <div class="group-box">
+      <span class="field-label">Criar o meu degradê</span>
+      <div class="color-row">
+        ${st.appColors.map((c, i) => (c ? html`<input key=${i} type="color" value=${c} onInput=${(e) => setColor(i, e.target.value)} title=${'Cor ' + (i + 1)} />` : null))}
+        <button class="gbtn sm" onClick=${toggleThird}>${st.appColors[2] ? 'Usar 2 cores' : '+ 3ª cor'}</button>
+      </div>
+      <div class="angle-row"><small class="muted">Direção</small>
+        <input type="range" min="0" max="360" step="5" value=${st.appAngle} onInput=${(e) => setSettings({ appTheme: 'custom', appAngle: +e.target.value })} /><b>${st.appAngle}°</b></div>
+      <div class="angle-row"><small class="muted">Intensidade</small>
+        <input type="range" min="0.1" max="1" step="0.05" value=${st.appIntensity} onInput=${(e) => setSettings({ appIntensity: +e.target.value })} /><b>${Math.round(st.appIntensity * 100)}%</b></div>
+      <small class="field-hint">A intensidade vale para todos os degradês. No tema escuro as cores ficam mais fechadas e no claro mais suaves, para o texto continuar legível.</small>
+    </div>
+    <div class="group-box">
+      <span class="field-label">Cor de destaque (botões, seleção, links)</span>
       <div class="swatches">
         ${ACCENTS.map((c) => html`<button key=${c} class=${cx('swatch', st.accent === c && 'on')} style=${`--c:${c}`} aria-label=${c} onClick=${() => setSettings({ accent: c })}></button>`)}
         <input type="color" value=${st.accent} onInput=${(e) => setSettings({ accent: e.target.value })} title="Escolher qualquer cor" />
       </div>
-    </div>
-    <div class="group-box">
-      <${Toggle} label="Modo desempenho (jogando)" hint="Desliga refração e desfoque do vidro para gastar menos GPU durante o jogo." value=${st.perfMode} onChange=${(v) => setSettings({ perfMode: v })} />
-      <${Toggle} label="Sons do app" hint="Entrar/sair da chamada, mensagens, mudo." value=${st.sounds} onChange=${(v) => setSettings({ sounds: v })} />
     </div>`;
+}
+
+function AutostartToggle() {
+  const [on, setOn] = useState(null);
+  useEffect(() => { window.perfumolandiaDesktop.getAutostart().then(setOn); }, []);
+  if (on === null) return null;
+  return html`<${Toggle} label="Iniciar com o Windows" hint="Abre escondido na bandeja quando o PC liga, para você receber chamadas." value=${on}
+    onChange=${(v) => window.perfumolandiaDesktop.setAutostart(v).then(setOn)} />`;
 }
 
 function Notify() {

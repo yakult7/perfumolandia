@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self'">
+<title>Perfumolandia</title>
+<style>
+  html, body { margin: 0; height: 100%; background: radial-gradient(120% 90% at 80% 110%, #1e6bff 0%, transparent 55%), linear-gradient(160deg, #150845, #24139c 60%, #1849d8); color: #fff; font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; -webkit-app-region: drag; user-select: none; overflow: hidden; }
+  .wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+  img { width: 110px; height: 110px; object-fit: contain; filter: drop-shadow(0 14px 26px rgba(0,0,0,.45)); animation: float 3.2s ease-in-out infinite; }
+  @keyframes float { 50% { transform: translateY(-8px); } }
+  b { font: 800 22px/1 "Segoe UI Variable Display", "Segoe UI", system-ui; letter-spacing: -.02em; }
+  #st { color: rgba(235,235,245,.75); min-height: 20px; }
+  .bar { width: 200px; height: 6px; border-radius: 6px; background: rgba(255,255,255,.15); overflow: hidden; visibility: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: #fff; border-radius: 6px; transition: width .25s; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img src="icon.png" alt="">
+  <b>Perfumolandia</b>
+  <div id="st">Abrindo…</div>
+  <div class="bar" id="bar"><i id="fill"></i></div>
+</div>
+<script>
+  function setStatus(text, pct) {
+    document.getElementById('st').textContent = text;
+    var bar = document.getElementById('bar');
+    if (pct === null || pct === undefined) { bar.style.visibility = 'hidden'; return; }
+    bar.style.visibility = 'visible';
+    document.getElementById('fill').style.width = pct + '%';
+  }
+</script>
+</body>
+</html>

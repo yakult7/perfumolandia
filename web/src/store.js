@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS = {
   perfMode: false, sounds: true, showStats: false,
   theme: 'system', accent: '#0a84ff', wallpaper: 'aurora', wallpaperColors: ['#3b5bff', '#a04dff', '#00c2c7'], wallpaperImage: null, glassStyle: 'clear',
   callHeight: 340,
+  appTheme: 'default', appColors: ['#5e5ce6', '#ff375f', '#0a84ff'], appAngle: 135, appIntensity: 0.6,
   userVolumes: {}, streamVolumes: {},
 };
 

@@ -5,6 +5,7 @@ import { S, set } from './store.js';
 import { sounds } from './sounds.js';
 import * as rtc from './rtc.js';
 import { toast, markRead, notifyDesktop, go } from './actions.js';
+import { optimizeImage } from './media.js';
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, storageKey: 'perfumolandia-auth' },
@@ -602,8 +603,10 @@ export async function deleteChannel(id, serverId) {
 }
 
 /** envia arquivos ao Storage com barra de progresso */
-export async function uploadFiles(files, onProgress) {
+export async function uploadFiles(files, onProgress, { max = 2560 } = {}) {
   const { data: { session } } = await sb.auth.getSession();
+  // imagens viram WebP antes de subir (economiza espaço e dados)
+  files = await Promise.all([...files].map((f) => (/^image\//.test(f.type) && !/webp$/.test(f.name) ? optimizeImage(f, { max }) : f)));
   const out = [];
   const total = [...files].reduce((a, f) => a + f.size, 0) || 1;
   let done = 0;

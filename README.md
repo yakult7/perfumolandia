@@ -11,7 +11,7 @@ direto entre os aparelhos (WebRTC).
 
 Tudo sai pronto na página de versões do GitHub (compila sozinho a cada atualização):
 
-- **Página de downloads:** https://github.com/yakult7/perfumolandia/releases/tag/latest
+- **Página de downloads:** https://github.com/yakult7/perfumolandia/releases/latest
 - **Link do app (iPhone, Android ou navegador):** https://yakult7.github.io/perfumolandia/
 
 | Aparelho | Arquivo | Como instalar |

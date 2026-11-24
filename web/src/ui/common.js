@@ -2,6 +2,7 @@ import { html, useRef, useEffect, useState, cx } from '../lib.js';
 import { useS, S } from '../store.js';
 import { Icon } from '../icons.js';
 import { closeModal, statusOf } from '../actions.js';
+import { optimizeImage } from '../media.js';
 
 export const initials = (name = '?') => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
@@ -92,17 +93,8 @@ export function pickFile(accept = 'image/*', multiple = false) {
 }
 
 /** reduz imagem (avatar/ícone) para no máx. N px, em webp */
-export async function shrinkImage(file, max = 512) {
-  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
-  const bmp = await createImageBitmap(file).catch(() => null);
-  if (!bmp) return file;
-  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
-  const c = document.createElement('canvas');
-  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-  const blob = await new Promise((r) => c.toBlob(r, 'image/webp', 0.9));
-  return new File([blob], file.name.replace(/\.\w+$/, '') + '.webp', { type: 'image/webp' });
-}
+/** reduz e converte para WebP (GIF vira WebP animado) */
+export const shrinkImage = (file, max = 512) => optimizeImage(file, { max, quality: 0.86 });
 
 export const Empty = ({ icon = 'sparkles', title, text, children }) => html`
   <div class="empty"><div class="empty-ic"><${Icon} n=${icon} s=${28} /></div><h3>${title}</h3>${text ? html`<p>${text}</p>` : null}${children}</div>`;

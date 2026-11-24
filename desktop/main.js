@@ -3,6 +3,8 @@
 const { app, BrowserWindow, session, desktopCapturer, ipcMain, protocol, net, Tray, Menu, nativeImage, shell, Notification } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const fs = require('node:fs');
+const { checkBeforeStart, backgroundChecks } = require('./updater.js');
 
 const DEV_URL = process.env.PERFUMO_DEV_URL; // ex.: http://localhost:5173 durante o desenvolvimento
 const PROFILE = process.env.PERFUMO_PROFILE; // permite abrir 2 contas no mesmo PC (testes)
@@ -32,7 +34,7 @@ let quitting = false;
 let pendingSource = null;
 const ICON = path.join(__dirname, 'icon.png');
 
-function createWindow() {
+function createWindow({ startHidden = false, onShown } = {}) {
   win = new BrowserWindow({
     width: 1320, height: 840, minWidth: 940, minHeight: 600,
     backgroundColor: '#07070c',
@@ -53,8 +55,9 @@ function createWindow() {
     win.setSkipTaskbar(true);
     win.setPosition(-5000, 0);
     win.once('ready-to-show', () => win.showInactive());
-  } else win.once('ready-to-show', () => win.show());
-  win.loadURL(DEV_URL || 'app://perfumolandia/index.html');
+  } else if (!startHidden) win.once('ready-to-show', () => { win.show(); onShown?.(); });
+  else win.once('ready-to-show', () => onShown?.());
+  win.loadURL(DEV_URL ? DEV_URL + '/app/' : 'app://perfumolandia/app/index.html');
 
   // links externos abrem no navegador
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -91,7 +94,7 @@ app.whenReady().then(() => {
     const { pathname } = new URL(req.url);
     let file = path.normalize(path.join(root, decodeURIComponent(pathname)));
     if (!file.startsWith(root)) return new Response('proibido', { status: 403 });
-    if (pathname === '/' || !path.extname(file)) file = path.join(root, 'index.html');
+    if (!path.extname(file)) file = path.join(root, pathname.startsWith('/app') ? 'app/index.html' : 'index.html');
     return net.fetch(pathToFileURL(file).toString());
   });
 
@@ -134,10 +137,34 @@ app.whenReady().then(() => {
     x.show();
   });
 
-  createWindow();
-  if (!process.env.PERFUMO_HIDDEN) createTray();
-  setupGlobalPtt();
+  setupAutostart();
+  // ao abrir: procura atualização antes (iniciando com o Windows, procura em silêncio)
+  const autostarted = process.argv.includes('--autostart');
+  checkBeforeStart({ icon: ICON, silent: autostarted || !!process.env.PERFUMO_HIDDEN }).then(({ result, splash }) => {
+    if (result === 'installing') { quitting = true; return; }
+    createWindow({ startHidden: autostarted, onShown: () => splash?.destroy() });
+    if (autostarted) splash?.destroy();
+    if (!process.env.PERFUMO_HIDDEN) createTray();
+    setupGlobalPtt();
+    backgroundChecks();
+  });
 });
+
+// ---------- iniciar com o Windows (ligado por padrão na primeira vez) ----------
+function setupAutostart() {
+  if (!app.isPackaged || process.env.PERFUMO_HIDDEN) return;
+  const flag = path.join(app.getPath('userData'), 'autostart-configurado');
+  if (!fs.existsSync(flag)) {
+    app.setLoginItemSettings({ openAtLogin: true, args: ['--autostart'] });
+    fs.writeFileSync(flag, '1');
+  }
+}
+ipcMain.handle('autostart:get', () => (app.isPackaged ? app.getLoginItemSettings({ args: ['--autostart'] }).openAtLogin : false));
+ipcMain.handle('autostart:set', (e, on) => {
+  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!on, args: ['--autostart'] });
+  return !!on;
+});
+ipcMain.handle('app:version', () => app.getVersion());
 
 app.on('window-all-closed', () => {});
 

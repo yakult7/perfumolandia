@@ -7,6 +7,7 @@ import { md, isBigEmoji } from '../markdown.js';
 import { sendMessage, loadMessages, markRead, openMenu, openModal, back, run, safe, toast, dmPartner, callDM, statusOf, groupName } from '../actions.js';
 import { Avatar, GBtn, Spinner, Empty, STATUS_LABEL, GroupAvatar } from './common.js';
 import { CallDock } from './call.js';
+import { readableColor, effectiveMode } from '../theme.js';
 
 export const QUICK = ['👍', '❤️', '😂', '🔥', '😮', '😢'];
 export const EMOJIS = {
@@ -177,6 +178,7 @@ function Message({ m, grouped, names, onReply, editing, setEditing }) {
 
 function TextMessage({ m, grouped, names, onReply, editing, setEditing }) {
   const author = useS((s) => s.users[m.authorId]);
+  const theme = useS((s) => effectiveMode(s.settings)); // recalcula a cor do nome ao trocar de tema
   const replied = useS((s) => (m.replyTo ? s.messages[m.channelId]?.list.find((x) => x.id === m.replyTo) : null));
   const repliedAuthor = useS((s) => (replied ? s.users[replied.authorId] : null));
   const mine = m.authorId === S.uid;
@@ -213,7 +215,7 @@ function TextMessage({ m, grouped, names, onReply, editing, setEditing }) {
         <div class="msg-body">
           ${grouped ? null : html`
             <div class="msg-head">
-              <b style=${`color:${author?.color}`} onClick=${() => openModal('profile', { id: m.authorId })}>${author?.displayName || 'Alguém'}</b>
+              <b style=${`color:${readableColor(author?.color, theme)}`} onClick=${() => openModal('profile', { id: m.authorId })}>${author?.displayName || 'Alguém'}</b>
               <time>${timeAgo(m.createdAt)}</time>
             </div>`}
           ${editing ? html`<${EditBox} m=${m} done=${() => setEditing(null)} />`

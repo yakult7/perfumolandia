@@ -61,7 +61,7 @@ export function ProfileEditor() {
     if (f.size > max * 1024 * 1024) return toast(`Imagem muito grande (máx. ${max} MB).`, 'err');
     setBusy(kind);
     try {
-      const file = f.type === 'image/gif' ? f : await shrinkImage(f, kind === 'avatar' ? 512 : 1600);
+      const file = await shrinkImage(f, kind === 'avatar' ? 512 : 1600);
       const [a] = await api.uploadFiles([file]);
       set(kind)(a.url);
     } catch (e) { toast(e.message, 'err'); } finally { setBusy(''); }

@@ -2,24 +2,29 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-  <meta name="theme-color" content="#07070c">
-  <meta name="color-scheme" content="dark light">
-  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#160a45">
+  <meta name="color-scheme" content="dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Perfumolandia">
-  <meta name="description" content="Perfumolandia: chat, chamadas e tela em 4K com os amigos.">
+  <meta name="description" content="Perfumolandia: o lugar da sua turma. Chat, grupos, chamadas de voz e vídeo e tela compartilhada em até 4K.">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
-  <link rel="icon" type="image/png" href="./icons/icon-192.png">
-  <title>Perfumolandia</title>
+  <link rel="icon" type="image/png" href="./icons/favicon.png">
+  <title>Perfumolandia | O lugar da sua turma</title>
+  <script>
+    // aberto como app instalado (tela de início), no app do PC ou no app nativo: vai direto para o aplicativo
+    (function () {
+      var standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+      if (standalone || window.perfumolandiaDesktop || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) {
+        location.replace('./app/' + location.search);
+      }
+    })();
+  </script>
 </head>
 <body>
-  <div id="bg" aria-hidden="true"></div>
-  <div id="app"></div>
-  <div id="audio-sink" hidden></div>
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="glass-defs"></defs></svg>
-  <script type="module" src="./src/main.js"></script>
+  <div id="site"></div>
+  <script type="module" src="./site/site.js"></script>
 </body>
 </html>

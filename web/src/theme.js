@@ -13,6 +13,33 @@ export const WALLPAPERS = {
   graphite: { name: 'Grafite', colors: ['#6b7080', '#3d4250', '#9aa0b0'] },
 };
 
+/** temas do app: degradê de fundo atrás dos painéis (ou "Padrão", sem degradê) */
+export const APP_THEMES = {
+  default: { name: 'Padrão', colors: null },
+  aurora: { name: 'Aurora', colors: ['#3b5bff', '#a04dff', '#00c2c7'], angle: 135 },
+  sunset: { name: 'Pôr do sol', colors: ['#ff6a3d', '#ff2d78', '#7b3dff'], angle: 160 },
+  ocean: { name: 'Oceano', colors: ['#0066ff', '#00d4ff', '#1b2a8f'], angle: 200 },
+  forest: { name: 'Floresta', colors: ['#0f9b6b', '#00c6a7', '#2d5bff'], angle: 135 },
+  lavender: { name: 'Lavanda', colors: ['#c58cff', '#8f7bff', '#ffb3d9'], angle: 120 },
+  neon: { name: 'Neon', colors: ['#ff00d4', '#7b00ff', '#00f0ff'], angle: 135 },
+  perfume: { name: 'Perfume', colors: ['#ff8fb8', '#ffc56b', '#c58cff'], angle: 150 },
+  mint: { name: 'Menta', colors: ['#5ef2c4', '#7bb8ff', '#e0ff8a'], angle: 110 },
+  midnight: { name: 'Meia-noite', colors: ['#1b2a8f', '#5e2bb5', '#0d1b3d'], angle: 180 },
+  fire: { name: 'Fogo', colors: ['#ff3b30', '#ff9500', '#ffcc00'], angle: 135 },
+  candy: { name: 'Algodão-doce', colors: ['#ff9ad5', '#9ad0ff', '#c7a6ff'], angle: 90 },
+};
+
+/** degradê de fundo do app já ajustado para o modo (escurece no escuro, clareia no claro) */
+export function appBackground(st = S.settings, mode = effectiveMode(st)) {
+  const t = st.appTheme === 'custom' ? { colors: st.appColors, angle: st.appAngle } : APP_THEMES[st.appTheme];
+  if (!t?.colors) return null;
+  const k = Math.max(0.1, Math.min(1, st.appIntensity ?? 0.6));
+  const tone = (c) => (mode === 'dark' ? mix(c, 0.78 - k * 0.5, 'b') : mix(c, 0.7 - k * 0.4, 'w'));
+  const cs = t.colors.filter(Boolean).map(tone);
+  const angle = t.angle ?? st.appAngle ?? 135;
+  return `radial-gradient(70% 60% at 85% 10%, ${cs[1] || cs[0]}cc 0%, transparent 70%), linear-gradient(${angle}deg, ${cs.join(', ')})`;
+}
+
 const mq = matchMedia('(prefers-color-scheme: dark)');
 export const effectiveMode = (st = S.settings) => (st.theme === 'system' ? (mq.matches ? 'dark' : 'light') : st.theme);
 
@@ -23,6 +50,17 @@ export function wallpaperCss(st = S.settings, mode = effectiveMode(st)) {
   }
   const c = st.wallpaper === 'custom' ? st.wallpaperColors : (WALLPAPERS[st.wallpaper] || WALLPAPERS.aurora).colors;
   return `url("${ribbons(c, mode === 'light')}") center / cover no-repeat, ${mode === 'light' ? '#eef0f6' : '#07070b'}`;
+}
+
+/** cor de nome sempre legível: clareia no escuro, escurece no claro */
+export function readableColor(hex, mode = effectiveMode()) {
+  if (!/^#[0-9a-f]{6}$/i.test(hex || '')) return 'var(--text)';
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  if (mode === 'dark' && L < 0.2) return mix(hex, 0.55 - L, 'w');
+  if (mode === 'light' && L > 0.4) return mix(hex, Math.min(0.7, L - 0.1), 'b');
+  return hex;
 }
 
 /** mistura uma cor hex com branco/preto (k = 0..1) */
@@ -80,13 +118,17 @@ export function applyTheme() {
   root.style.setProperty('--wallpaper', wallpaperCss(st, mode));
   root.classList.toggle('perf', !!st.perfMode);
   root.classList.toggle('wp-image', st.wallpaper === 'image' && !!st.wallpaperImage);
+  const bg = appBackground(st, mode);
+  root.classList.toggle('themed', !!bg);
+  if (bg) root.style.setProperty('--app-bg', bg); else root.style.removeProperty('--app-bg');
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', mode === 'dark' ? '#07070b' : '#eef0f6');
 }
 
 let last = '';
 subscribe(() => {
   const st = S.settings;
-  const key = [st.theme, st.accent, st.wallpaper, st.wallpaperImage, (st.wallpaperColors || []).join(), st.glassStyle, st.perfMode].join('|');
+  const key = [st.theme, st.accent, st.wallpaper, st.wallpaperImage, (st.wallpaperColors || []).join(), st.glassStyle, st.perfMode,
+    st.appTheme, (st.appColors || []).join(), st.appAngle, st.appIntensity].join('|');
   if (key !== last) { last = key; applyTheme(); }
 });
 mq.addEventListener('change', applyTheme);

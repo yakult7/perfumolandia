@@ -120,34 +120,44 @@ jobs:
         shell: bash
         run: |
           npm ci
-          cp ../assets/icon-512.png icon.png
+          cp ../assets/icon-transparent-512.png icon.png
           npx electron-builder --win --x64 --publish never
+          ls release
       - uses: actions/upload-artifact@v4
         with:
           name: windows
           path: |
-            desktop/release/*.exe
+            desktop/release/Perfumolandia-Setup.exe
+            desktop/release/Perfumolandia-Setup.exe.blockmap
+            desktop/release/latest.yml
 
   release:
     needs: [android, ios, windows]
     if: always() && needs.android.result == 'success'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: versão
+        id: v
+        run: echo "version=$(node -p "require('./desktop/package.json').version")" >> $GITHUB_OUTPUT
       - uses: actions/download-artifact@v4
         with: { path: out, merge-multiple: true }
       - run: ls -la out
+      # cada versão vira uma Release própria (v1.2.0...). O app do PC lê o latest.yml da mais recente e se atualiza sozinho.
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: Perfumolandia (versão mais recente)
+          tag_name: v${{ steps.v.outputs.version }}
+          name: Perfumolandia ${{ steps.v.outputs.version }}
           prerelease: false
           make_latest: true
           body: |
             Baixe para o seu aparelho:
-            - **Windows**: Perfumolandia-Setup (instalador) ou Perfumolandia-Portatil
+            - **Windows**: Perfumolandia-Setup.exe (atualiza sozinho)
             - **Android**: Perfumolandia.apk
             - **iPhone**: Perfumolandia.ipa (instale com o Sideloadly) ou use o link do site pelo Safari
           files: |
             out/*.apk
             out/*.ipa
             out/*.exe
+            out/*.blockmap
+            out/latest.yml
