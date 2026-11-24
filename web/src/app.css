@@ -18,7 +18,7 @@
   --lg-blur: 2.5px; --lg-sat: 1.9; --lg-bright: 1.04;
   --wallpaper: #07070b;
 }
-:root, [data-theme="dark"], .force-dark {
+:root, [data-theme="dark"], .force-dark, .stage, .theater {
   color-scheme: dark;
   --bg: #000000;
   --text: #f5f5f7;
