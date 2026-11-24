@@ -4,7 +4,7 @@ import { Icon } from '../icons.js';
 import { GlassBar } from '../glass.js';
 import * as api from '../api.js';
 import { openDM, callDM, run, safe, isUnread, statusOf, dmPartner, openModal, openMenu, go, toast, groupName } from '../actions.js';
-import { Avatar, GBtn, Empty, STATUS_LABEL, GroupAvatar } from './common.js';
+import { Avatar, GBtn, Empty, STATUS_LABEL, GroupAvatar, Activity } from './common.js';
 
 export function Friends({ mobile }) {
   const tab = useS((s) => s.view.homeTab);
@@ -55,7 +55,7 @@ function FriendRow({ r }) {
       <${Avatar} id=${other} size=${42} status />
       <div class="frow-name">
         <b>${u.displayName}</b>
-        <small>${incoming ? 'Quer ser seu amigo' : outgoing ? 'Pedido enviado' : u.customStatus || STATUS_LABEL[st]} · @${u.username}</small>
+        <small>${incoming ? 'Quer ser seu amigo' : outgoing ? 'Pedido enviado' : html`<${Activity} id=${other} fallback=${(u.customStatus || STATUS_LABEL[st]) + ' · @' + u.username} />`}</small>
       </div>
       <div class="frow-actions" onClick=${(e) => e.stopPropagation()}>
         ${incoming ? html`
@@ -141,7 +141,7 @@ function DMRow({ d, on, inCall }) {
   return html`
     <button class=${cx('dm', on && 'on', unread && 'unread')} onClick=${() => { set((s) => { s.ui = { ...s.ui, stage: false }; }); go(null, d.id); }}>
       <${Avatar} id=${other} size=${32} status />
-      <span class="dm-name"><b>${u?.displayName}</b><small>${inCall ? '📞 Em chamada' : u?.customStatus || STATUS_LABEL[st]}</small></span>
+      <span class="dm-name"><b>${u?.displayName}</b><small>${inCall ? '📞 Em chamada' : html`<${Activity} id=${other} fallback=${u?.customStatus || STATUS_LABEL[st]} />`}</small></span>
       ${unread ? html`<i class="pill-dot"></i>` : null}
     </button>`;
 }

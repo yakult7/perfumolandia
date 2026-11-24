@@ -5,6 +5,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const fs = require('node:fs');
 const { checkBeforeStart, backgroundChecks } = require('./updater.js');
+const { watchGames } = require('./games.js');
 
 const DEV_URL = process.env.PERFUMO_DEV_URL; // ex.: http://localhost:5173 durante o desenvolvimento
 const PROFILE = process.env.PERFUMO_PROFILE; // permite abrir 2 contas no mesmo PC (testes)
@@ -32,6 +33,7 @@ let win = null;
 let tray = null;
 let quitting = false;
 let pendingSource = null;
+let currentGame = null;
 const ICON = path.join(__dirname, 'icon.png');
 
 function createWindow({ startHidden = false, onShown } = {}) {
@@ -147,6 +149,8 @@ app.whenReady().then(() => {
     if (!process.env.PERFUMO_HIDDEN) createTray();
     setupGlobalPtt();
     backgroundChecks();
+    // status "Jogando ...": manda o jogo aberto para o app web
+    watchGames(app, (g) => { currentGame = g; win?.webContents.send('game', g); });
   });
 });
 
@@ -165,6 +169,7 @@ ipcMain.handle('autostart:set', (e, on) => {
   return !!on;
 });
 ipcMain.handle('app:version', () => app.getVersion());
+ipcMain.handle('game:get', () => currentGame);
 
 app.on('window-all-closed', () => {});
 

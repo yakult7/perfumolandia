@@ -313,7 +313,7 @@ async function trackPresence() {
       const ch = globalChan;
       if (!ch || ch.state !== 'joined') break;
       await Promise.race([
-        ch.track({ uid: S.uid, status: S.me?.chosenStatus || 'online', room: myVoice.room, state: myVoice.state, at: Date.now() }).catch(() => {}),
+        ch.track({ uid: S.uid, status: S.me?.chosenStatus || 'online', room: myVoice.room, state: myVoice.state, at: Date.now(), game: S.settings.shareGame !== false && S.me?.chosenStatus !== 'invisible' ? S.myGame : null }).catch(() => {}),
         new Promise((r) => setTimeout(r, 6000)),
       ]);
     } while (trackAgain);
@@ -326,22 +326,29 @@ export function setVoicePresence(room, state) {
   return trackPresence();
 }
 export const refreshPresence = trackPresence;
+/** jogo aberto agora (app do Windows): aparece como "Jogando ..." para os amigos */
+export function setMyGame(g) {
+  set((s) => { s.myGame = g ? { name: g.name, img: g.img || null, wide: !!g.wide, since: Date.now() } : null; });
+  return trackPresence();
+}
 
 function onPresenceSync() {
   const all = globalChan.presenceState(); // { clientId: [meta, ...] }
   const online = {};
   const voice = {};
+  const games = {};
   const rank = { online: 3, dnd: 2, idle: 1, invisible: 0 };
   for (const [sid, metas] of Object.entries(all)) {
     const meta = metas[metas.length - 1];
     if (!meta?.uid) continue;
     const st = meta.status === 'invisible' ? 'offline' : meta.status;
     if (st !== 'offline' && (!online[meta.uid] || rank[st] > rank[online[meta.uid]])) online[meta.uid] = st;
+    if (meta.game?.name && st !== 'offline') games[meta.uid] = meta.game;
     if (meta.room) (voice[meta.room] ||= []).push({ sid, userId: meta.uid, state: meta.state || {}, joinedAt: meta.at });
   }
   for (const list of Object.values(voice)) list.sort((a, b) => a.joinedAt - b.joinedAt);
   const prevVoice = S.voice;
-  set((s) => { s.online = online; s.voice = voice; });
+  set((s) => { s.online = online; s.voice = voice; s.games = games; });
   for (const room of new Set([...Object.keys(prevVoice), ...Object.keys(voice)])) {
     rtc.onVoiceUpdate(room, voice[room] || []);
     if (S.outgoing?.dmId === room && (voice[room] || []).some((p) => p.userId !== S.uid)) {

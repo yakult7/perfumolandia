@@ -7,7 +7,7 @@ import * as api from '../api.js';
 import {
   go, goHome, openModal, openMenu, closeMenu, isUnread, statusOf, dmPartner, roomName, serverOfRoom, safe, run, toast,
 } from '../actions.js';
-import { Avatar, GBtn, Toasts, STATUS_LABEL, useNow, fmtDur, initials } from './common.js';
+import { Avatar, GBtn, Toasts, STATUS_LABEL, useNow, fmtDur, initials, Activity } from './common.js';
 import { Chat } from './chat.js';
 import { CallStage, MiniCall, Theater } from './call.js';
 import { Friends, DMList } from './home.js';
@@ -193,7 +193,7 @@ export function UserBar() {
     <div class="userbar lg">
       <button class="me" onClick=${(e) => statusMenu(e)}>
         <${Avatar} id=${me.id} size=${32} status ring />
-        <span class="me-names"><b>${me.displayName}</b><small>${me.customStatus || STATUS_LABEL[st === 'invisible' ? 'invisible' : st] || '@' + me.username}</small></span>
+        <span class="me-names"><b>${me.displayName}</b><small><${Activity} id=${me.id} fallback=${me.customStatus || STATUS_LABEL[st === 'invisible' ? 'invisible' : st] || '@' + me.username} /></small></span>
       </button>
       <${GBtn} icon=${call?.muted ? 'micOff' : 'mic'} title=${call ? (call.muted ? 'Ativar microfone' : 'Silenciar') : 'Microfone (entre numa chamada)'}
         class=${cx('icon-only sm', call?.muted && 'off')} onClick=${rtc.toggleMute} disabled=${!call} size=${15} />
@@ -246,7 +246,7 @@ function Members({ ids, ownerId }) {
   const Row = (r) => html`
     <button key=${r.uid} class=${cx('member', r.st === 'offline' && 'dim')} onClick=${(e) => openModal('profile', { id: r.uid })}>
       <${Avatar} id=${r.uid} size=${30} status />
-      <span>${r.name}${ownerId === r.uid ? html` <${Icon} n="crown" s=${13} class="crown" />` : null}</span>
+      <span class="mem-name"><span>${r.name}${ownerId === r.uid ? html` <${Icon} n="crown" s=${13} class="crown" />` : null}</span><small><${Activity} id=${r.uid} fallback=${null} /></small></span>
     </button>`;
   return html`
     <aside class="members panel material">

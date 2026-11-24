@@ -18,7 +18,7 @@
     (function () {
       var standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
       if (standalone || window.perfumolandiaDesktop || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) {
-        location.replace('./app/' + location.search);
+        location.replace('./app/index.html' + location.search); // Capacitor devolve o index raiz para caminhos sem extensão
       }
     })();
   </script>

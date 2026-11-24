@@ -3,7 +3,7 @@ import { useS, S } from '../store.js';
 import { Icon } from '../icons.js';
 import * as api from '../api.js';
 import { run, safe, toast, statusOf } from '../actions.js';
-import { Avatar, STATUS_LABEL, pickFile, shrinkImage, Field } from './common.js';
+import { Avatar, STATUS_LABEL, pickFile, shrinkImage, Field, GameCard } from './common.js';
 
 const SINCE = (ts) => (ts ? new Date(ts).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
@@ -22,6 +22,7 @@ export function ProfileCard({ u, status, children, avatarSlot, bannerSlot }) {
             <div class="pcard-user"><span>@${u.username}</span>${u.pronouns ? html`<span>· ${u.pronouns}</span>` : null}</div>
           </div>
           ${u.customStatus ? html`<div class="pcard-status">${u.customStatus}</div>` : null}
+          ${u.id ? html`<${GameCard} id=${u.id} />` : null}
           ${u.bio ? html`<div class="pcard-section"><small>Sobre mim</small><p class="pcard-bio">${u.bio}</p></div>` : null}
           ${u.createdAt ? html`<div class="pcard-section"><small>Membro desde</small><span class="muted">${SINCE(u.createdAt)}</span></div>` : null}
           ${status ? html`<div class="pcard-section"><small>Status</small><span><i class=${'dot inline st-' + status}></i> ${STATUS_LABEL[status]}</span></div>` : null}

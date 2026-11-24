@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 let pttCb = null;
 ipcRenderer.on('ptt', (e, down) => pttCb?.(down));
+let gameCb = null;
+ipcRenderer.on('game', (e, g) => gameCb?.(g));
 
 contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
   platform: process.platform,
@@ -15,4 +17,6 @@ contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
   setAutostart: (on) => ipcRenderer.invoke('autostart:set', !!on),
   version: () => ipcRenderer.invoke('app:version'),
   onPtt: (cb) => { pttCb = cb; },
+  getGame: () => ipcRenderer.invoke('game:get'),
+  onGame: (cb) => { gameCb = cb; },
 });

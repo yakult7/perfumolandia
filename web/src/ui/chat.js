@@ -5,7 +5,7 @@ import * as api from '../api.js';
 import * as rtc from '../rtc.js';
 import { md, isBigEmoji } from '../markdown.js';
 import { sendMessage, loadMessages, markRead, openMenu, openModal, back, run, safe, toast, dmPartner, callDM, statusOf, groupName } from '../actions.js';
-import { Avatar, GBtn, Spinner, Empty, STATUS_LABEL, GroupAvatar } from './common.js';
+import { Avatar, GBtn, Spinner, Empty, STATUS_LABEL, GroupAvatar, Activity } from './common.js';
 import { CallDock } from './call.js';
 import { readableColor, effectiveMode } from '../theme.js';
 
@@ -79,7 +79,7 @@ export function Chat({ cid, mobile }) {
 
 const DmStatus = ({ id }) => {
   const st = useS((s) => statusOf(s, id));
-  return html`<small class="muted">${STATUS_LABEL[st]}</small>`;
+  return html`<small class="muted"><${Activity} id=${id} fallback=${STATUS_LABEL[st]} /></small>`;
 };
 
 function MessageList({ cid, box, title, dm, onReply, editing, setEditing }) {

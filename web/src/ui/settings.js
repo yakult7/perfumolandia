@@ -216,6 +216,7 @@ function Look() {
     <div class="group-box">
       <${Toggle} label="Modo desempenho (jogando)" hint="Desliga refração e desfoque do vidro para gastar menos GPU durante o jogo." value=${st.perfMode} onChange=${(v) => setSettings({ perfMode: v })} />
       <${Toggle} label="Sons do app" hint="Entrar/sair da chamada, mensagens, mudo." value=${st.sounds} onChange=${(v) => setSettings({ sounds: v })} />
+      <${Toggle} label="Mostrar o jogo que estou jogando" hint="No app do Windows, seus amigos veem “Jogando …” com a capa do jogo." value=${st.shareGame !== false} onChange=${(v) => { setSettings({ shareGame: v }); api.refreshPresence(); }} />
       ${window.perfumolandiaDesktop?.getAutostart ? html`<${AutostartToggle} />` : null}
     </div>`;
 }

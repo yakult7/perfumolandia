@@ -19,6 +19,30 @@ export function Avatar({ id, size = 36, status = false, ring = false, user: u0 }
 }
 export const STATUS_LABEL = { online: 'Online', idle: 'Ausente', dnd: 'Não perturbe', invisible: 'Invisível', offline: 'Offline' };
 
+/** linha curta de status: "Jogando X" (com ícone do jogo) ou o texto de sempre */
+const hideImg = (e) => { e.target.style.display = 'none'; };
+export function Activity({ id, fallback }) {
+  const g = useS((s) => s.games[id] || null);
+  if (!g) return fallback;
+  return html`<span class="act-line">${g.img ? html`<img src=${g.img} alt="" class=${cx('act-ico', g.wide && 'wide')} onError=${hideImg} />` : html`<${Icon} n="game" s=${12} />`}<span class="act-txt">Jogando <b>${g.name}</b></span></span>`;
+}
+
+/** cartão "Jogando agora" do perfil: capa do jogo, nome e há quanto tempo */
+export function GameCard({ id }) {
+  const g = useS((s) => s.games[id] || null);
+  useNow(30000);
+  if (!g) return null;
+  const min = Math.max(0, Math.floor((Date.now() - (g.since || Date.now())) / 60000));
+  const tempo = min < 1 ? 'agora mesmo' : min < 60 ? `há ${min} min` : `há ${Math.floor(min / 60)} h ${min % 60} min`;
+  return html`
+    <div class="pcard-section"><small>Jogando agora</small>
+      <div class=${cx('game-card', g.wide && 'wide')}>
+        ${g.img ? html`<img src=${g.img} alt="" onError=${hideImg} />` : html`<span class="game-ph"><${Icon} n="game" s=${22} /></span>`}
+        <div><b>${g.name}</b><span class="muted">${tempo}</span></div>
+      </div>
+    </div>`;
+}
+
 /** botão de vidro redondo/pílula */
 export const GBtn = ({ icon, label, onClick, active, danger, class: c = '', title, size = 17, children, ...rest }) => html`
   <button type="button" class=${cx('gbtn', active && 'active', danger && 'danger', c)} title=${title || label} aria-label=${title || label} onClick=${onClick} ...${rest}>

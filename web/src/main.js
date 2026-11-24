@@ -23,6 +23,8 @@ document.documentElement.classList.toggle('native', isNativeApp);
 if (window.perfumolandiaDesktop) {
   document.documentElement.classList.add('desktop-app');
   window.perfumolandiaDesktop.setPttKey(S.settings.pttKey);
+  window.perfumolandiaDesktop.onGame?.((g) => api.setMyGame(g));
+  window.perfumolandiaDesktop.getGame?.().then((g) => g && api.setMyGame(g));
 }
 render(html`<${App} />`, document.getElementById('app'));
 // acesso para diagnóstico pelo console (F12)
