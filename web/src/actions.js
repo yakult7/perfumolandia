@@ -115,14 +115,18 @@ export async function callDM(dmId) {
   await rtc.join(dmId);
   const others = (S.voice[dmId] || []).filter((p) => p.userId !== S.uid);
   if (others.length) return;
-  const to = S.dms[dmId].members.find((m) => m !== S.uid);
-  set((s) => { s.outgoing = { dmId }; });
+  const to = roomMembers(dmId).filter((m) => m !== S.uid);
+  set((s) => { s.outgoing = { dmId, msgId: null }; });
   sounds.ring(true);
-  api.sendEvent({ type: 'ring', dmId, to });
+  // registro "fulano iniciou uma chamada" no chat
+  const log = await api.insertCallLog(dmId).catch(() => null);
+  if (S.outgoing?.dmId === dmId) set((s) => { s.outgoing = { ...s.outgoing, msgId: log?.id || null }; });
+  const ring = () => api.sendEvent({ type: 'ring', dmId, to, msgId: log?.id || null });
+  ring();
   // reenvia o toque a cada 8s (caso a pessoa abra o app depois)
   const again = setInterval(() => {
     if (S.outgoing?.dmId !== dmId) return clearInterval(again);
-    api.sendEvent({ type: 'ring', dmId, to });
+    ring();
   }, 8000);
   setTimeout(() => {
     if (S.outgoing?.dmId !== dmId) return;
@@ -130,11 +134,13 @@ export async function callDM(dmId) {
     toast('Ninguém atendeu.');
   }, 45000);
 }
+/** para de chamar; se ninguém atendeu, vira "chamada perdida" */
 export function cancelOutgoing() {
   const o = S.outgoing;
   if (!o) return;
-  const to = S.dms[o.dmId]?.members.find((m) => m !== S.uid);
+  const to = roomMembers(o.dmId).filter((m) => m !== S.uid);
   api.sendEvent({ type: 'ring-cancel', dmId: o.dmId, to });
+  if (o.msgId) api.setCallStatus(o.msgId, 'missed');
   sounds.stopRing();
   set((s) => { s.outgoing = null; });
 }
@@ -145,6 +151,7 @@ export async function acceptCall() {
   set((s) => { s.incoming = null; });
   go(null, inc.dmId);
   await rtc.join(inc.dmId);
+  if (inc.msgId) api.setCallStatus(inc.msgId, 'answered');
   setUI({ callOpen: true });
 }
 export function declineCall() {
@@ -152,13 +159,27 @@ export function declineCall() {
   if (!inc) return;
   sounds.stopRing();
   set((s) => { s.incoming = null; });
+  // em grupo, recusar não encerra a chamada dos outros
+  if (inc.msgId && S.dms[inc.dmId]) api.setCallStatus(inc.msgId, 'declined');
   api.sendEvent({ type: 'ring-decline', dmId: inc.dmId, to: inc.from });
+}
+/** chamada direta/grupo ficou vazia: fecha o registro com a duração */
+export async function closeCallLog(roomId) {
+  if (!S.dms[roomId] && !S.groups[roomId]) return;
+  const log = await api.latestCallLog(roomId).catch(() => null);
+  if (!log) return;
+  const st = log.meta?.status || 'ringing';
+  if (st === 'answered') api.setCallStatus(log.id, 'ended');
+  else if (st === 'ringing') api.setCallStatus(log.id, 'missed');
 }
 
 export const dmPartner = (dm) => S.users[dm.members.find((m) => m !== S.uid)] || { displayName: 'Desconhecido', username: '?' };
 export const userName = (id) => S.users[id]?.displayName || 'Alguém';
+export const roomMembers = (roomId) => S.dms[roomId]?.members || S.groups[roomId]?.members || [];
+export const groupName = (g) => g.name || g.members.filter((m) => m !== S.uid).map((m) => S.users[m]?.displayName || '?').join(', ') || 'Grupo';
 export const roomName = (roomId) => {
   if (S.dms[roomId]) return dmPartner(S.dms[roomId]).displayName;
+  if (S.groups[roomId]) return groupName(S.groups[roomId]);
   for (const sv of Object.values(S.servers)) {
     const c = sv.channels.find((x) => x.id === roomId);
     if (c) return c.name;

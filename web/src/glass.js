@@ -1,4 +1,7 @@
-// Vidro líquido: lente arrastável com física de mola, refração (Chromium), brilho que segue o dedo/mouse.
+// Liquid Glass no estilo iOS 26 / macOS Tahoe.
+// - Todo elemento com a classe "lg" ganha refração real das bordas (lente convexa) + leve aberração cromática.
+//   Funciona em Chromium (app do Windows, Android, Chrome/Edge). No Safari cai para vidro fosco com o mesmo brilho.
+// - Lente arrastável com física de mola nas barras de abas, trilho de servidores e menus.
 import { html, useRef, useEffect, useLayoutEffect, useState, cx } from './lib.js';
 import { S } from './store.js';
 
@@ -15,66 +18,132 @@ class Spring {
   snap(x) { this.x = this.t = x; this.v = 0; }
 }
 
-// ---------- refração (só Chromium aceita backdrop-filter com filtro SVG) ----------
-export const supportsRefraction = /Chrome\/\d/.test(navigator.userAgent) && !/Mobile.*Firefox/.test(navigator.userAgent);
-const filters = new Map();
-/** gera um mapa de deslocamento de "lente convexa" para um retângulo arredondado w×h */
-function refractionFilter(w, h, r) {
-  w = Math.max(8, Math.round(w)); h = Math.max(8, Math.round(h)); r = Math.min(r, h / 2, w / 2);
-  const key = `${w}x${h}x${Math.round(r)}`;
-  if (filters.has(key)) return filters.get(key);
+// ---------- refração ----------
+export const supportsRefraction = /Chrome\/\d/.test(navigator.userAgent);
+document.documentElement.classList.toggle('refract', supportsRefraction);
+
+const filters = new Map(); // chave -> id
+const defs = () => document.getElementById('glass-defs');
+
+/** mapa de deslocamento de uma "gota" de vidro w×h com cantos r: forte nas bordas, neutro no meio */
+function displacementMap(w, h, r) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
   const img = ctx.createImageData(w, h);
-  const bezel = Math.min(w, h) * 0.42;
+  const bezel = Math.max(6, Math.min(Math.min(w, h) * 0.5, 26));
   for (let y = 0; y < h; y++) {
+    const py = y + 0.5 - h / 2;
     for (let x = 0; x < w; x++) {
-      // distância até a borda do retângulo arredondado (SDF) e direção normal
-      const qx = Math.abs(x + 0.5 - w / 2) - (w / 2 - r);
-      const qy = Math.abs(y + 0.5 - h / 2) - (h / 2 - r);
+      const px = x + 0.5 - w / 2;
+      const qx = Math.abs(px) - (w / 2 - r);
+      const qy = Math.abs(py) - (h / 2 - r);
       const ox = Math.max(qx, 0), oy = Math.max(qy, 0);
-      const outside = Math.hypot(ox, oy);
-      const sd = outside + Math.min(Math.max(qx, qy), 0) - r; // <0 dentro
-      const depth = Math.min(1, Math.max(0, -sd / bezel));
+      const out = Math.hypot(ox, oy);
+      const sd = out + Math.min(Math.max(qx, qy), 0) - r; // distância assinada (negativa dentro)
+      const t = Math.min(1, Math.max(0, -sd / bezel)); // 0 na borda, 1 depois do bisel
       let nx = 0, ny = 0;
-      if (outside > 0) { nx = (ox / outside) * Math.sign(x + 0.5 - w / 2); ny = (oy / outside) * Math.sign(y + 0.5 - h / 2); }
-      else if (qx > qy) nx = Math.sign(x + 0.5 - w / 2);
-      else ny = Math.sign(y + 0.5 - h / 2);
-      const strength = Math.pow(1 - depth, 2.2); // forte na borda, zero no centro
+      if (out > 0) { nx = (ox / out) * Math.sign(px); ny = (oy / out) * Math.sign(py); }
+      else if (qx > qy) nx = Math.sign(px);
+      else ny = Math.sign(py);
+      // perfil de "squircle" convexo: inclinação grande perto da borda
+      const k = Math.pow(1 - t, 2.6);
       const i = (y * w + x) * 4;
-      img.data[i] = 128 - nx * strength * 127;
-      img.data[i + 1] = 128 - ny * strength * 127;
+      img.data[i] = 128 - nx * k * 127;
+      img.data[i + 1] = 128 - ny * k * 127;
       img.data[i + 2] = 128;
       img.data[i + 3] = 255;
     }
   }
   ctx.putImageData(img, 0, 0);
-  const id = 'lq-' + key;
-  const defs = document.getElementById('glass-defs');
-  defs.insertAdjacentHTML('beforeend', `
-    <filter id="${id}" x="0" y="0" width="${w}" height="${h}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feImage href="${c.toDataURL()}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="map"/>
-      <feDisplacementMap in="SourceGraphic" in2="map" scale="${Math.round(Math.min(w, h) * 0.55)}" xChannelSelector="R" yChannelSelector="G"/>
-    </filter>`);
+  return c.toDataURL();
+}
+
+function getFilter(w, h, r, chroma) {
+  w = Math.max(8, Math.round(w / 2) * 2);
+  h = Math.max(8, Math.round(h / 2) * 2);
+  r = Math.max(0, Math.min(Math.round(r), Math.floor(Math.min(w, h) / 2)));
+  const key = `${w}x${h}r${r}${chroma ? 'c' : ''}`;
+  if (filters.has(key)) return filters.get(key);
+  const id = 'lg-' + key;
+  const s = Math.min(Math.min(w, h) * 0.6, 44);
+  const map = `<feImage href="${displacementMap(w, h, r)}" x="0" y="0" width="${w}" height="${h}" preserveAspectRatio="none" result="m"/>`;
+  const body = chroma
+    ? `${map}
+      <feDisplacementMap in="SourceGraphic" in2="m" scale="${s}" xChannelSelector="R" yChannelSelector="G" result="dr"/>
+      <feColorMatrix in="dr" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r"/>
+      <feDisplacementMap in="SourceGraphic" in2="m" scale="${s * 0.92}" xChannelSelector="R" yChannelSelector="G" result="dg"/>
+      <feColorMatrix in="dg" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="g"/>
+      <feDisplacementMap in="SourceGraphic" in2="m" scale="${s * 0.84}" xChannelSelector="R" yChannelSelector="G" result="db"/>
+      <feColorMatrix in="db" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="b"/>
+      <feBlend in="r" in2="g" mode="screen" result="rg"/>
+      <feBlend in="rg" in2="b" mode="screen"/>`
+    : `${map}<feDisplacementMap in="SourceGraphic" in2="m" scale="${s}" xChannelSelector="R" yChannelSelector="G"/>`;
+  defs()?.insertAdjacentHTML('beforeend',
+    `<filter id="${id}" x="0" y="0" width="${w}" height="${h}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">${body}</filter>`);
   filters.set(key, id);
+  // limita a memória: remove filtros antigos
+  if (filters.size > 90) {
+    const [oldKey, oldId] = filters.entries().next().value;
+    filters.delete(oldKey);
+    document.getElementById(oldId)?.remove();
+  }
   return id;
 }
+
+/** aplica refração num elemento de tamanho conhecido (lente) */
 export function applyRefraction(el, w, h, r) {
-  if (!supportsRefraction || S.settings.perfMode || !el) { if (el) el.style.backdropFilter = ''; return; }
-  const id = refractionFilter(w, h, r);
-  el.style.backdropFilter = `url(#${id}) blur(1.2px) saturate(1.7) brightness(1.06)`;
+  if (!el) return;
+  if (!supportsRefraction || S.settings.perfMode) { el.style.removeProperty('--lg-filter'); return; }
+  el.style.setProperty('--lg-filter', `url(#${getFilter(w, h, r, w * h < 40000)})`);
 }
+
+// gerenciador global: qualquer elemento ".lg" na tela
+const tracked = new Set();
+let pending = new Set();
+let timer = 0;
+const ro = new ResizeObserver((entries) => {
+  for (const e of entries) pending.add(e.target);
+  clearTimeout(timer);
+  timer = setTimeout(flush, 60);
+});
+function flush() {
+  const list = pending;
+  pending = new Set();
+  for (const el of list) {
+    if (!el.isConnected) { tracked.delete(el); ro.unobserve(el); continue; }
+    const w = el.offsetWidth, h = el.offsetHeight;
+    if (!w || !h) continue;
+    const r = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+    applyRefraction(el, w, h, Math.min(r, Math.min(w, h) / 2));
+  }
+}
+function scan() {
+  if (!supportsRefraction) return;
+  for (const el of document.querySelectorAll('.lg, .gbtn')) {
+    if (tracked.has(el)) continue;
+    tracked.add(el);
+    ro.observe(el);
+  }
+  for (const el of tracked) if (!el.isConnected) { tracked.delete(el); ro.unobserve(el); }
+}
+let scanQueued = false;
+new MutationObserver(() => {
+  if (scanQueued) return;
+  scanQueued = true;
+  requestAnimationFrame(() => { scanQueued = false; scan(); });
+}).observe(document.documentElement, { childList: true, subtree: true });
+export function refreshGlass() { for (const el of tracked) pending.add(el); flush(); }
 
 // ---------- brilho especular que segue o ponteiro ----------
 let lightRaf = 0, lightEv = null;
 addEventListener('pointermove', (e) => {
   lightEv = e;
-  if (lightRaf) return;
+  if (lightRaf || S.settings.perfMode) return;
   lightRaf = requestAnimationFrame(() => {
     lightRaf = 0;
-    const t = lightEv.target?.closest?.('.glass, .gbtn');
-    if (!t || S.settings.perfMode) return;
+    const t = lightEv.target?.closest?.('.lg, .gbtn');
+    if (!t) return;
     const r = t.getBoundingClientRect();
     t.style.setProperty('--mx', ((lightEv.clientX - r.left) / r.width) * 100 + '%');
     t.style.setProperty('--my', ((lightEv.clientY - r.top) / r.height) * 100 + '%');
@@ -83,12 +152,10 @@ addEventListener('pointermove', (e) => {
 
 // ---------- barra com lente arrastável ----------
 /**
- * items: [{ key, label, render(active) , title, badge }]
- * value: chave ativa | null
- * axis: 'x' (barra horizontal) | 'y' (vertical)
- * dragFrom: 'any' | 'lens' (na vertical que rola, só arrasta pela lente)
+ * items: [{ key, label?, render(active)?, title, badge, class, onContext }]
+ * axis: 'x' | 'y'   dragFrom: 'any' | 'lens'
  */
-export function GlassBar({ items, value, onChange, axis = 'x', dragFrom = 'any', class: klass = '', itemClass = '', pad = 4 }) {
+export function GlassBar({ items, value, onChange, axis = 'x', dragFrom = 'any', class: klass = '', itemClass = '', pad = 3 }) {
   const bar = useRef();
   const lens = useRef();
   const st = useRef(null);
@@ -108,7 +175,6 @@ export function GlassBar({ items, value, onChange, axis = 'x', dragFrom = 'any',
       el, key: el.dataset.key,
       start: horiz ? el.offsetLeft : el.offsetTop,
       len: horiz ? el.offsetWidth : el.offsetHeight,
-      cstart: horiz ? el.offsetTop : el.offsetLeft,
       clen: horiz ? el.offsetHeight : el.offsetWidth,
     }));
   };
@@ -116,27 +182,22 @@ export function GlassBar({ items, value, onChange, axis = 'x', dragFrom = 'any',
 
   const render = () => {
     const l = lens.current;
-    if (!l) return;
+    if (!l || !bar.current) return;
     const lift = s.lift.x;
-    const vel = Math.abs(s.pos.v);
-    const stretch = Math.min(vel / 2600, 0.32);
-    const scaleMain = 1 + stretch + lift * 0.14;
-    const scaleCross = 1 - stretch * 0.45 + lift * 0.14;
+    const stretch = Math.min(Math.abs(s.pos.v) / 2600, 0.3);
+    const main = 1 + stretch + lift * 0.16;
+    const cross = 1 - stretch * 0.4 + lift * 0.16;
     const len = s.size.x, clen = s.cross.x;
     const x = horiz ? s.pos.x - len / 2 : (bar.current.clientWidth - clen) / 2;
     const y = horiz ? (bar.current.clientHeight - clen) / 2 : s.pos.x - len / 2;
     l.style.width = (horiz ? len : clen) + 'px';
     l.style.height = (horiz ? clen : len) + 'px';
-    l.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${horiz ? scaleMain : scaleCross}, ${horiz ? scaleCross : scaleMain})`;
+    l.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${horiz ? main : cross}, ${horiz ? cross : main})`;
     l.style.opacity = s.visible ? 1 : 0;
     l.classList.toggle('lifted', lift > 0.05);
-    // item "quente" sob a lente
     let hot = -1, best = Infinity;
     s.rects.forEach((r, i) => { const d = Math.abs(r.start + r.len / 2 - s.pos.x); if (d < best) { best = d; hot = i; } });
-    if (s.drag && hot !== s.hot) {
-      s.rects.forEach((r, i) => r.el.classList.toggle('hot', i === hot));
-      s.hot = hot;
-    }
+    if (s.drag && hot !== s.hot) { s.rects.forEach((r, i) => r.el.classList.toggle('hot', i === hot)); s.hot = hot; }
   };
   const loop = (t) => {
     const dt = Math.min(0.032, (t - (s.last || t)) / 1000 || 0.016);
@@ -152,71 +213,32 @@ export function GlassBar({ items, value, onChange, axis = 'x', dragFrom = 'any',
     const r = targetFor(key);
     s.visible = !!r;
     if (!r) { render(); return; }
-    const center = r.start + r.len / 2, len = r.len - pad * 2 + 8, clen = r.clen - pad * 2 + 4;
+    const center = r.start + r.len / 2, len = r.len - pad * 2 + 6, clen = r.clen - pad * 2 + 2;
     if (!animate || !s.size.x) { s.pos.snap(center); s.size.snap(len); s.cross.snap(clen); render(); }
     else { s.pos.t = center; s.size.t = len; s.cross.t = clen; kick(); }
-    const radius = Math.min(len, clen) / 2;
-    applyRefraction(lens.current, horiz ? len : clen, horiz ? clen : len, radius);
+    applyRefraction(lens.current, horiz ? len : clen, horiz ? clen : len, Math.min(len, clen) / 2);
   };
 
+  // troca de aba: a lente DESLIZA até o item novo (mola), nunca teletransporta
+  s.value = value;
   useLayoutEffect(() => { measure(); goTo(value, true); }, [value, items.map((i) => i.key).join('|')]);
+  // só reposiciona sem animar quando a barra muda de tamanho (janela redimensionada)
   useEffect(() => {
-    const ro = new ResizeObserver(() => { measure(); goTo(value, false); });
-    ro.observe(bar.current);
-    return () => { ro.disconnect(); cancelAnimationFrame(s.raf); };
-  }, [value]);
+    let w = bar.current.offsetWidth, h = bar.current.offsetHeight;
+    const ob = new ResizeObserver(() => {
+      const nw = bar.current.offsetWidth, nh = bar.current.offsetHeight;
+      if (nw === w && nh === h) return;
+      w = nw; h = nh;
+      measure();
+      if (!s.drag) goTo(s.value, false);
+    });
+    ob.observe(bar.current);
+    return () => { ob.disconnect(); cancelAnimationFrame(s.raf); };
+  }, []);
 
   const coord = (e) => {
     const b = bar.current.getBoundingClientRect();
     return horiz ? e.clientX - b.left + bar.current.scrollLeft : e.clientY - b.top + bar.current.scrollTop;
-  };
-  const onDown = (e) => {
-    if (e.button > 0) return;
-    measure();
-    const onLens = e.target.closest('.lens') || (targetFor(value)?.el.contains(e.target));
-    const item = e.target.closest('.gbar-item');
-    if (dragFrom === 'lens' && !onLens) { s.drag = null; s.tapKey = item?.dataset.key; return; }
-    s.drag = { id: e.pointerId, start: coord(e), moved: false, onLens, startKey: item?.dataset.key };
-    s.tapKey = item?.dataset.key;
-    if (onLens) { s.lift.t = 1; kick(); }
-  };
-  const onMove = (e) => {
-    const d = s.drag;
-    if (!d || d.id !== e.pointerId) return;
-    const c = coord(e);
-    if (!d.moved && Math.abs(c - d.start) > 6) {
-      d.moved = true;
-      bar.current.setPointerCapture(e.pointerId);
-      s.lift.t = 1;
-      s.visible = true;
-    }
-    if (!d.moved) return;
-    e.preventDefault();
-    const first = s.rects[0], last = s.rects[s.rects.length - 1];
-    const min = first.start + first.len / 2 - 14, max = last.start + last.len / 2 + 14;
-    s.pos.t = Math.max(min, Math.min(max, c));
-    // tamanho acompanha o item mais próximo
-    const near = s.rects.reduce((a, r) => (Math.abs(r.start + r.len / 2 - c) < Math.abs(a.start + a.len / 2 - c) ? r : a), first);
-    s.size.t = near.len - pad * 2 + 8;
-    kick();
-  };
-  const onUp = (e) => {
-    const d = s.drag;
-    s.lift.t = 0;
-    kick();
-    if (!d) {
-      if (s.tapKey && dragFrom === 'lens') choose(s.tapKey);
-      return;
-    }
-    s.drag = null;
-    s.rects.forEach((r) => r.el.classList.remove('hot'));
-    s.hot = -1;
-    if (d.moved) {
-      const near = s.rects[Math.max(0, s.rects.findIndex((r) => r.start <= s.pos.x && s.pos.x <= r.start + r.len)) ] ||
-        s.rects.reduce((a, r) => (Math.abs(r.start + r.len / 2 - s.pos.x) < Math.abs(a.start + a.len / 2 - s.pos.x) ? r : a));
-      choose(near.key);
-      goTo(near.key);
-    } else if (s.tapKey) choose(s.tapKey);
   };
   const choose = (key) => {
     const it = items.find((i) => i.key === key);
@@ -224,17 +246,58 @@ export function GlassBar({ items, value, onChange, axis = 'x', dragFrom = 'any',
     if (navigator.vibrate && key !== value) navigator.vibrate(8);
     onChange(key, it);
   };
+  const onDown = (e) => {
+    if (e.button > 0) return;
+    measure();
+    const onLens = targetFor(value)?.el.contains(e.target);
+    const item = e.target.closest('.gbar-item');
+    s.tapKey = item?.dataset.key;
+    // no toque, barras que rolam só arrastam pela lente; com mouse arrasta de qualquer lugar
+    if (dragFrom === 'lens' && !onLens && e.pointerType !== 'mouse') { s.drag = null; return; }
+    s.drag = { id: e.pointerId, start: coord(e), moved: false };
+    if (onLens) { s.lift.t = 1; kick(); }
+  };
+  const onMove = (e) => {
+    const d = s.drag;
+    if (!d || d.id !== e.pointerId) return;
+    const c = coord(e);
+    if (!d.moved && Math.abs(c - d.start) > 4) {
+      d.moved = true;
+      bar.current.setPointerCapture(e.pointerId);
+      s.lift.t = 1; s.visible = true;
+    }
+    if (!d.moved) return;
+    e.preventDefault();
+    const first = s.rects[0], last = s.rects[s.rects.length - 1];
+    s.pos.t = Math.max(first.start + first.len / 2 - 12, Math.min(last.start + last.len / 2 + 12, c));
+    const near = s.rects.reduce((a, r) => (Math.abs(r.start + r.len / 2 - c) < Math.abs(a.start + a.len / 2 - c) ? r : a), first);
+    s.size.t = near.len - pad * 2 + 6;
+    kick();
+  };
+  const onUp = () => {
+    const d = s.drag;
+    s.lift.t = 0;
+    kick();
+    if (!d) { if (s.tapKey) choose(s.tapKey); return; }
+    s.drag = null;
+    s.rects.forEach((r) => r.el.classList.remove('hot'));
+    s.hot = -1;
+    if (d.moved) {
+      const near = s.rects.reduce((a, r) => (Math.abs(r.start + r.len / 2 - s.pos.x) < Math.abs(a.start + a.len / 2 - s.pos.x) ? r : a));
+      choose(near.key);
+      goTo(near.key);
+    } else if (s.tapKey) choose(s.tapKey);
+  };
 
   return html`
-    <div ref=${bar} class=${cx('gbar glass', horiz ? 'gbar-x' : 'gbar-y', klass)} role="tablist"
+    <div ref=${bar} class=${cx('gbar lg', horiz ? 'gbar-x' : 'gbar-y', klass)} role="tablist"
       onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${onUp}
       onPointerCancel=${() => { s.drag = null; s.tapKey = null; s.lift.t = 0; s.rects.forEach((r) => r.el.classList.remove('hot')); goTo(value); kick(); }}>
-      <div ref=${lens} class="lens" aria-hidden="true"><i></i></div>
+      <div ref=${lens} class="lens" aria-hidden="true"></div>
       ${items.map((it) => html`
         <button key=${it.key} type="button" role="tab" data-key=${it.key} title=${it.title || ''} aria-selected=${it.key === value}
           class=${cx('gbar-item', it.key === value && 'on', itemClass, it.class)}
-          onClick=${(e) => { if (e.detail === 0) choose(it.key); }}
-          onContextMenu=${it.onContext}>
+          onClick=${(e) => { if (e.detail === 0) choose(it.key); }} onContextMenu=${it.onContext}>
           ${it.render ? it.render(it.key === value) : it.label}
           ${it.badge ? html`<span class="badge">${it.badge}</span>` : null}
         </button>`)}
@@ -246,13 +309,13 @@ export function GlassMenu({ menu, onClose }) {
   const ref = useRef();
   const lens = useRef();
   const [pos, setPos] = useState(null);
-  const spring = useRef({ y: new Spring(0, 640, 36), h: new Spring(0, 640, 36), raf: 0, last: 0, shown: false });
+  const sp = useRef({ y: new Spring(0, 640, 36), h: new Spring(0, 640, 36), raf: 0, last: 0, shown: false }).current;
+  const picked = useRef(false);
 
   useLayoutEffect(() => {
-    const el = ref.current;
-    const r = el.getBoundingClientRect();
-    const vw = innerWidth, vh = innerHeight, m = 10;
-    let x = Math.min(menu.x, vw - r.width - m);
+    const r = ref.current.getBoundingClientRect();
+    const vw = innerWidth, vh = innerHeight, m = 8;
+    const x = Math.min(menu.x, vw - r.width - m);
     let y = menu.y;
     if (y + r.height > vh - m) y = menu.above != null ? menu.above - r.height : vh - r.height - m;
     setPos({ x: Math.max(m, x), y: Math.max(m, y) });
@@ -265,7 +328,6 @@ export function GlassMenu({ menu, onClose }) {
     return () => { clearTimeout(t); removeEventListener('pointerdown', close, true); removeEventListener('keydown', key); removeEventListener('resize', onClose); };
   }, [menu.key]);
 
-  const sp = spring.current;
   const loop = (t) => {
     const dt = Math.min(0.032, (t - (sp.last || t)) / 1000 || 0.016);
     sp.last = t;
@@ -284,10 +346,9 @@ export function GlassMenu({ menu, onClose }) {
     if (!sp.shown) { sp.y.snap(y); sp.h.snap(h); sp.shown = true; lens.current.style.opacity = 1; }
     sp.y.t = y; sp.h.t = h;
     if (!sp.raf) sp.raf = requestAnimationFrame(loop);
-    applyRefraction(lens.current, ref.current.clientWidth - 12, h, 12);
+    applyRefraction(lens.current, ref.current.clientWidth - 10, h, 11);
   };
   const itemAt = (e) => document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.menu-item');
-  const picked = useRef(false);
   const pick = (el) => {
     if (!el || el.disabled || picked.current) return;
     picked.current = true;
@@ -297,19 +358,19 @@ export function GlassMenu({ menu, onClose }) {
   };
 
   return html`
-    <div ref=${ref} class="menu glass pop" role="menu"
+    <div ref=${ref} class="menu lg pop" role="menu"
       style=${pos ? `left:${pos.x}px;top:${pos.y}px` : 'visibility:hidden;left:0;top:0'}
       onPointerMove=${(e) => hover(itemAt(e))}
       onPointerDown=${(e) => { if (e.pointerType !== 'mouse') { ref.current.setPointerCapture(e.pointerId); hover(itemAt(e)); } }}
       onPointerUp=${(e) => { if (e.pointerType !== 'mouse') pick(itemAt(e)); }}>
-      <div ref=${lens} class="lens menu-lens" aria-hidden="true"><i></i></div>
+      <div ref=${lens} class="lens menu-lens" aria-hidden="true"></div>
       ${menu.items.map((it, i) => it.sep
         ? html`<div key=${'s' + i} class="menu-sep"></div>`
         : it.header
           ? html`<div key=${'h' + i} class="menu-header">${it.header}</div>`
           : html`<button key=${i} type="button" role="menuitem" data-i=${i} class=${cx('menu-item', it.danger && 'danger', it.checked && 'checked')}
               disabled=${it.disabled} onClick=${(e) => pick(e.currentTarget)}>
-              ${it.icon ? it.icon : null}<span>${it.label}</span>${it.hint ? html`<small>${it.hint}</small>` : null}
+              ${it.icon || null}<span>${it.label}</span>${it.hint ? html`<small>${it.hint}</small>` : null}
             </button>`)}
     </div>`;
 }

@@ -5,16 +5,19 @@ import { GlassBar } from '../glass.js';
 import * as api from '../api.js';
 import * as rtc from '../rtc.js';
 import { closeModal, openModal, run, safe, toast, enableNotifications } from '../actions.js';
-import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, Video } from './common.js';
+import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, Video, PasswordInput } from './common.js';
 import { statusMenu } from './shell.js';
+import { ProfileEditor, ProfileCard } from './profile.js';
+import { ACCENTS } from '../theme.js';
 
 const TABS = [
-  { key: 'account', label: 'Minha conta', icon: 'user' },
+  { key: 'account', label: 'Perfil', icon: 'user' },
+  { key: 'look', label: 'Aparência', icon: 'brush' },
   { key: 'voice', label: 'Voz e vídeo', icon: 'mic' },
   { key: 'screen', label: 'Transmissão', icon: 'screen' },
-  { key: 'look', label: 'Aparência e desempenho', icon: 'zap' },
   { key: 'notify', label: 'Notificações', icon: 'bell' },
-  { key: 'about', label: 'Sobre e convites', icon: 'sparkles' },
+  { key: 'security', label: 'Conta e senha', icon: 'lock' },
+  { key: 'about', label: 'Sobre', icon: 'sparkles' },
 ];
 
 export function Settings({ tab: t0 = 'account' }) {
@@ -25,66 +28,48 @@ export function Settings({ tab: t0 = 'account' }) {
     addEventListener('keydown', k);
     return () => removeEventListener('keydown', k);
   }, []);
-  const items = TABS.map((t) => ({ key: t.key, title: t.label, render: () => html`<${Icon} n=${t.icon} s=${18} /><span>${t.label}</span>` }));
+  const items = TABS.map((t) => ({ key: t.key, title: t.label, render: () => html`<${Icon} n=${t.icon} s=${16} /><span>${t.label}</span>` }));
   return html`
     <div class="settings-wrap" onPointerDown=${(e) => e.target === e.currentTarget && closeModal()}>
-      <div class="settings pop">
+      <div class="settings sheet pop">
         <nav class="settings-nav">
-          <h2>Configurações</h2>
+          <h2>Ajustes</h2>
           <${GlassBar} axis=${mobile ? 'x' : 'y'} items=${items} value=${tab} onChange=${setTab} class="snav" itemClass="snav-item" />
-          ${!mobile ? html`<button class="gbtn danger wide logout" onClick=${() => api.logout()}><${Icon} n="logout" s=${18} /> Sair da conta</button>` : null}
+          ${!mobile ? html`<button class="gbtn danger wide logout" onClick=${() => api.logout()}><${Icon} n="logout" s=${15} /> Sair da conta</button>` : null}
         </nav>
         <section class="settings-body">
           <header class="settings-head"><h3>${TABS.find((x) => x.key === tab).label}</h3>
-            <button class="gbtn icon-only sm" onClick=${closeModal} aria-label="Fechar"><${Icon} n="x" s=${18} /></button></header>
+            <button class="gbtn icon-only sm" onClick=${closeModal} aria-label="Fechar"><${Icon} n="x" s=${15} /></button></header>
           <div class="settings-scroll">
-            ${tab === 'account' ? html`<${Account} />` : null}
+            ${tab === 'account' ? html`<${ProfileEditor} />` : null}
             ${tab === 'voice' ? html`<${Voice} />` : null}
             ${tab === 'screen' ? html`<${ScreenPrefs} />` : null}
             ${tab === 'look' ? html`<${Look} />` : null}
             ${tab === 'notify' ? html`<${Notify} />` : null}
+            ${tab === 'security' ? html`<${Security} />` : null}
             ${tab === 'about' ? html`<${About} />` : null}
-            ${mobile && tab === 'account' ? html`<button class="gbtn danger wide" onClick=${() => api.logout()}><${Icon} n="logout" s=${18} /> Sair da conta</button>` : null}
           </div>
         </section>
       </div>
     </div>`;
 }
 
-const COLORS = ['#7c5cff', '#a78bfa', '#ff5c8a', '#f472b6', '#fb7185', '#f59e0b', '#a3e635', '#2dd4bf', '#38bdf8', '#94a3b8'];
-
-function Account() {
+function Security() {
   const me = useS((s) => s.me);
-  const [f, setF] = useState({ displayName: me.displayName, customStatus: me.customStatus, bio: me.bio });
   const [pw, setPw] = useState('');
-  const dirty = f.displayName !== me.displayName || f.customStatus !== me.customStatus || f.bio !== me.bio;
-  const avatar = async () => {
-    const file = await pickFile();
-    if (!file) return;
-    const [a] = await run(api.uploadFiles([await shrinkImage(file, 384)]));
-    safe(api.updateProfile({ avatar: a.url }), 'Foto atualizada.');
-  };
+  const [pw2, setPw2] = useState('');
+  const match = pw === pw2;
   return html`
-    <div class="acct-card" style=${`--c:${me.color}`}>
-      <div class="acct-banner"></div>
-      <div class="acct-row">
-        <button class="acct-av" onClick=${avatar} title="Trocar foto"><${Avatar} id=${me.id} size=${84} status /><span class="acct-av-edit"><${Icon} n="edit" s=${14} /></span></button>
-        <div><b>${me.displayName}</b><small class="muted">@${me.username}</small></div>
-      </div>
+    <div class="group-box">
+      <div class="toggle-row"><span><b>Usuário</b><small>@${me.username} · usado para entrar e para os amigos te adicionarem</small></span>
+        <button class="gbtn sm" onClick=${() => navigator.clipboard?.writeText(me.username).then(() => toast('Copiado.'))}><${Icon} n="copy" s=${14} /> Copiar</button></div>
     </div>
-    <${Field} label="Nome de exibição"><input value=${f.displayName} maxlength="32" onInput=${(e) => setF({ ...f, displayName: e.target.value })} /><//>
-    <${Field} label="Status personalizado" hint="Ex.: jogando Valorant 🎮"><input value=${f.customStatus} maxlength="80" onInput=${(e) => setF({ ...f, customStatus: e.target.value })} /><//>
-    <${Field} label="Sobre mim"><textarea rows="3" maxlength="190" value=${f.bio} onInput=${(e) => setF({ ...f, bio: e.target.value })}></textarea><//>
-    <div class="field"><span class="field-label">Cor do perfil</span>
-      <div class="swatches">${COLORS.map((c) => html`<button key=${c} class=${cx('swatch', me.color === c && 'on')} style=${`--c:${c}`} aria-label=${c} onClick=${() => safe(api.updateProfile({ color: c }))}></button>`)}</div>
+    <div class="group-box">
+      <${Field} label="Nova senha"><${PasswordInput} autocomplete="new-password" value=${pw} minlength="6" placeholder="Mínimo de 6 caracteres" onInput=${(e) => setPw(e.target.value)} /><//>
+      <${Field} label="Repita a nova senha" hint=${pw2 && !match ? 'As senhas não são iguais.' : ''}><${PasswordInput} autocomplete="new-password" value=${pw2} onInput=${(e) => setPw2(e.target.value)} /><//>
+      <div class="row"><button class="gbtn primary" disabled=${pw.length < 6 || !match} onClick=${() => run(api.changePassword(pw), 'Senha alterada.').then(() => { setPw(''); setPw2(''); }).catch(() => {})}>Alterar senha</button></div>
     </div>
-    <div class="row">
-      <button class="gbtn primary" disabled=${!dirty} onClick=${() => safe(api.updateProfile(f), 'Perfil salvo.')}>Salvar perfil</button>
-      ${me.avatar ? html`<button class="gbtn" onClick=${() => safe(api.updateProfile({ avatar: null }))}>Remover foto</button>` : null}
-    </div>
-    <hr />
-    <${Field} label="Nova senha"><input type="password" autocomplete="new-password" value=${pw} minlength="6" onInput=${(e) => setPw(e.target.value)} /><//>
-    <button class="gbtn" disabled=${pw.length < 6} onClick=${() => run(api.changePassword(pw), 'Senha alterada.').then(() => setPw('')).catch(() => {})}>Alterar senha</button>`;
+    <button class="gbtn danger wide" onClick=${() => api.logout()}><${Icon} n="logout" s=${15} /> Sair da conta</button>`;
 }
 
 function useDevices() {
@@ -212,10 +197,30 @@ function ScreenPrefs() {
 
 function Look() {
   const st = useS((s) => s.settings);
-  useEffect(() => { document.documentElement.classList.toggle('perf', st.perfMode); }, [st.perfMode]);
   return html`
-    <${Toggle} label="Modo desempenho (jogando)" hint="Desliga desfoque, refração e animações para gastar menos GPU durante o jogo." value=${st.perfMode} onChange=${(v) => setSettings({ perfMode: v })} />
-    <${Toggle} label="Sons do app" hint="Entrar/sair da chamada, mensagens, mudo." value=${st.sounds} onChange=${(v) => setSettings({ sounds: v })} />`;
+    <div class="group-box">
+      <span class="field-label">Tema</span>
+      <div class="seg">
+        ${[['system', 'Automático'], ['light', 'Claro'], ['dark', 'Escuro']].map(([k, l]) => html`
+          <button key=${k} class=${st.theme === k ? 'on' : ''} onClick=${() => setSettings({ theme: k })}>${k === 'light' ? html`<${Icon} n="sun" s=${14} />` : k === 'dark' ? html`<${Icon} n="moon" s=${14} />` : null}${l}</button>`)}
+      </div>
+      <span class="field-label">Vidro</span>
+      <div class="seg">
+        <button class=${st.glassStyle !== 'tinted' ? 'on' : ''} onClick=${() => setSettings({ glassStyle: 'clear' })}>Transparente</button>
+        <button class=${st.glassStyle === 'tinted' ? 'on' : ''} onClick=${() => setSettings({ glassStyle: 'tinted' })}>Fosco (mais legível)</button>
+      </div>
+    </div>
+    <div class="group-box">
+      <span class="field-label">Cor de destaque</span>
+      <div class="swatches">
+        ${ACCENTS.map((c) => html`<button key=${c} class=${cx('swatch', st.accent === c && 'on')} style=${`--c:${c}`} aria-label=${c} onClick=${() => setSettings({ accent: c })}></button>`)}
+        <input type="color" value=${st.accent} onInput=${(e) => setSettings({ accent: e.target.value })} title="Escolher qualquer cor" />
+      </div>
+    </div>
+    <div class="group-box">
+      <${Toggle} label="Modo desempenho (jogando)" hint="Desliga refração e desfoque do vidro para gastar menos GPU durante o jogo." value=${st.perfMode} onChange=${(v) => setSettings({ perfMode: v })} />
+      <${Toggle} label="Sons do app" hint="Entrar/sair da chamada, mensagens, mudo." value=${st.sounds} onChange=${(v) => setSettings({ sounds: v })} />
+    </div>`;
 }
 
 function Notify() {
@@ -227,14 +232,21 @@ function Notify() {
     ${perm === 'denied' ? html`<p class="muted small">Libere nas configurações do sistema/navegador para este app.</p>` : null}`;
 }
 
+const SITE = 'https://yakult7.github.io/perfumolandia/';
+const RELEASES = 'https://github.com/yakult7/perfumolandia/releases/tag/latest';
 function About() {
-  const code = useS((s) => s.inviteCode);
+  const share = `Baixa a Perfumolandia pra gente conversar e jogar junto!\nPC e Android: ${RELEASES}\niPhone (abra no Safari): ${SITE}`;
   return html`
-    <div class="code-box glass"><span>Código para criar conta</span><b>${code}</b>
-      <button class="gbtn sm" onClick=${() => navigator.clipboard?.writeText(code).then(() => toast('Copiado.'))}><${Icon} n="copy" s=${16} /> Copiar</button></div>
-    <p class="muted">Mande esse código e o link do app só para os amigos. Sem ele ninguém cria conta.</p>
-    <button class="gbtn" onClick=${() => openModal('install')}><${Icon} n="download" s=${18} /> Como instalar no celular</button>
-    <p class="muted small">Perfumolandia · versão 1.0</p>`;
+    <div class="group-box">
+      <b>Chamar os amigos</b>
+      <p class="muted" style="margin:0">Eles baixam o app, criam a conta e te adicionam pelo seu usuário.</p>
+      <div class="row">
+        <button class="gbtn primary sm" onClick=${() => navigator.clipboard?.writeText(share).then(() => toast('Mensagem copiada.'))}><${Icon} n="copy" s=${14} /> Copiar convite</button>
+        <a class="gbtn sm" href=${RELEASES} target="_blank" rel="noopener"><${Icon} n="download" s=${14} /> Página de downloads</a>
+        <button class="gbtn sm" onClick=${() => openModal('install')}><${Icon} n="share" s=${14} /> Instalar no celular</button>
+      </div>
+    </div>
+    <p class="muted small">Perfumolandia · versão 1.1</p>`;
 }
 
 export const Toggle = ({ label, hint, value, onChange }) => html`
@@ -249,17 +261,13 @@ export function MePage() {
   if (!me) return null;
   return html`
     <div class="me-page">
-      <div class="acct-card" style=${`--c:${me.color}`}>
-        <div class="acct-banner"></div>
-        <div class="acct-row">
-          <button class="acct-av" onClick=${statusMenu}><${Avatar} id=${me.id} size=${84} status /></button>
-          <div><b>${me.displayName}</b><small class="muted">@${me.username}</small>${me.customStatus ? html`<small>${me.customStatus}</small>` : null}</div>
-        </div>
+      <div class="mob-title" style="padding:6px 4px 0"><h1>Você</h1></div>
+      <${ProfileCard} u=${me} status=${me.chosenStatus === 'invisible' ? 'offline' : me.chosenStatus}>
+        <button class="gbtn sm primary" onClick=${() => openModal('settings', { tab: 'account' })}><${Icon} n="edit" s=${14} /> Editar perfil</button>
+        <button class="gbtn sm" onClick=${statusMenu}>Alterar status</button>
+      <//>
+      <div class="me-list material">
+        ${TABS.map((t) => html`<button key=${t.key} class="me-item" onClick=${() => openModal('settings', { tab: t.key })}><${Icon} n=${t.icon} s=${19} /><span>${t.label}</span><${Icon} n="right" s=${16} /></button>`)}
       </div>
-      <div class="me-list">
-        ${TABS.map((t) => html`<button key=${t.key} class="me-item" onClick=${() => openModal('settings', { tab: t.key })}><${Icon} n=${t.icon} s=${20} /><span>${t.label}</span><${Icon} n="right" s=${18} /></button>`)}
-        <button class="me-item" onClick=${statusMenu}><${Icon} n="sparkles" s=${20} /><span>Alterar status</span><${Icon} n="right" s=${18} /></button>
-      </div>
-      <button class="gbtn danger wide" onClick=${() => api.logout()}><${Icon} n="logout" s=${18} /> Sair da conta</button>
     </div>`;
 }

@@ -12,6 +12,8 @@ if (process.env.PERFUMO_FAKE_MEDIA) {
   app.commandLine.appendSwitch('use-fake-device-for-media-stream');
   app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 }
+// sons (toque de chamada) tocam sem precisar clicar antes
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 // chamada não pode engasgar quando a janela está minimizada ou atrás do jogo
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -46,7 +48,12 @@ function createWindow() {
       spellcheck: true,
     },
   });
-  win.once('ready-to-show', () => win.show());
+  // PERFUMO_HIDDEN: testes automáticos abrem fora da área visível, sem foco e sem barra de tarefas
+  if (process.env.PERFUMO_HIDDEN) {
+    win.setSkipTaskbar(true);
+    win.setPosition(-5000, 0);
+    win.once('ready-to-show', () => win.showInactive());
+  } else win.once('ready-to-show', () => win.show());
   win.loadURL(DEV_URL || 'app://perfumolandia/index.html');
 
   // links externos abrem no navegador
@@ -114,6 +121,12 @@ app.whenReady().then(() => {
       .map((s) => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL(), appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null }));
   });
   ipcMain.handle('screen:select', (e, id, audio) => { pendingSource = { id, audio: !!audio }; });
+  // chamada recebendo: pisca na barra de tarefas e mostra a janela se estiver escondida na bandeja
+  ipcMain.on('attention', () => {
+    if (!win) return;
+    if (!win.isVisible()) win.showInactive();
+    if (!win.isFocused()) win.flashFrame(true);
+  });
   ipcMain.on('notify', (e, n) => {
     if (!Notification.isSupported()) return;
     const x = new Notification({ title: n.title, body: n.body, icon: ICON, silent: true });
@@ -122,7 +135,7 @@ app.whenReady().then(() => {
   });
 
   createWindow();
-  createTray();
+  if (!process.env.PERFUMO_HIDDEN) createTray();
   setupGlobalPtt();
 });
 

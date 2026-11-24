@@ -3,12 +3,11 @@
 -- Rode inteiro no SQL Editor do projeto. Pode rodar de novo sem quebrar.
 -- =====================================================================
 
--- ---------- configuração privada (código de convite) ----------
-create table if not exists public.app_config (key text primary key, value text not null);
-alter table public.app_config enable row level security;
-insert into public.app_config (key, value)
-values ('invite_code', upper(substr(md5(random()::text), 1, 8)))
-on conflict (key) do nothing;
+-- ---------- código de convite foi removido (cadastro livre) ----------
+drop function if exists public.create_profile(text, text, text);
+drop function if exists public.check_invite(text);
+drop function if exists public.get_invite_code();
+drop table if exists public.app_config;
 
 -- ---------- perfis ----------
 create table if not exists public.profiles (
@@ -22,6 +21,14 @@ create table if not exists public.profiles (
   bio text not null default '' check (char_length(bio) <= 190),
   created_at timestamptz not null default now()
 );
+-- personalização do perfil
+alter table public.profiles add column if not exists banner_url text;
+alter table public.profiles add column if not exists accent_color text;
+alter table public.profiles add column if not exists pronouns text not null default '';
+alter table public.profiles drop constraint if exists profiles_bio_check;
+alter table public.profiles add constraint profiles_bio_check check (char_length(bio) <= 400);
+alter table public.profiles drop constraint if exists profiles_pronouns_check;
+alter table public.profiles add constraint profiles_pronouns_check check (char_length(pronouns) <= 40);
 alter table public.profiles enable row level security;
 drop policy if exists "profiles read" on public.profiles;
 create policy "profiles read" on public.profiles for select to authenticated using (true);
@@ -29,20 +36,7 @@ drop policy if exists "profiles update own" on public.profiles;
 create policy "profiles update own" on public.profiles for update to authenticated
   using (id = auth.uid()) with check (id = auth.uid());
 
-create or replace function public.check_invite(code text) returns boolean
-language sql security definer set search_path = public stable as $$
-  select exists (select 1 from app_config where key = 'invite_code' and value = upper(trim(code)));
-$$;
-grant execute on function public.check_invite(text) to anon, authenticated;
-
-create or replace function public.get_invite_code() returns text
-language sql security definer set search_path = public stable as $$
-  select value from app_config where key = 'invite_code'
-    and exists (select 1 from profiles where id = auth.uid());
-$$;
-grant execute on function public.get_invite_code() to authenticated;
-
-create or replace function public.create_profile(p_username text, p_display_name text, p_code text)
+create or replace function public.create_profile(p_username text, p_display_name text)
 returns public.profiles language plpgsql security definer set search_path = public as $$
 declare
   r profiles;
@@ -51,7 +45,6 @@ begin
   if auth.uid() is null then raise exception 'Não autenticado.'; end if;
   select * into r from profiles where id = auth.uid();
   if found then return r; end if;
-  if not check_invite(p_code) then raise exception 'Código de convite incorreto.'; end if;
   insert into profiles (id, username, display_name, color)
   values (auth.uid(), lower(trim(p_username)),
           coalesce(nullif(trim(p_display_name), ''), lower(trim(p_username))),
@@ -59,7 +52,7 @@ begin
   returning * into r;
   return r;
 end $$;
-grant execute on function public.create_profile(text, text, text) to authenticated;
+grant execute on function public.create_profile(text, text) to authenticated;
 
 -- ---------- amizades ----------
 create table if not exists public.relations (
@@ -199,6 +192,78 @@ begin
 end $$;
 grant execute on function public.open_dm(uuid) to authenticated;
 
+-- ---------- grupos (conversa com várias pessoas, sem servidor) ----------
+create table if not exists public.groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null default '' check (char_length(name) <= 48),
+  icon_url text,
+  owner_id uuid not null default auth.uid() references public.profiles on delete cascade,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.group_members (
+  group_id uuid not null references public.groups on delete cascade,
+  user_id uuid not null references public.profiles on delete cascade,
+  joined_at timestamptz not null default now(),
+  primary key (group_id, user_id)
+);
+alter table public.groups enable row level security;
+alter table public.group_members enable row level security;
+
+create or replace function public.is_group_member(gid uuid) returns boolean
+language sql security definer set search_path = public stable as $$
+  select exists (select 1 from group_members where group_id = gid and user_id = auth.uid());
+$$;
+
+drop policy if exists "groups read" on public.groups;
+create policy "groups read" on public.groups for select to authenticated using (is_group_member(id));
+drop policy if exists "groups update" on public.groups;
+create policy "groups update" on public.groups for update to authenticated using (is_group_member(id)) with check (is_group_member(id));
+drop policy if exists "groups delete" on public.groups;
+create policy "groups delete" on public.groups for delete to authenticated using (owner_id = auth.uid());
+drop policy if exists "gm read" on public.group_members;
+create policy "gm read" on public.group_members for select to authenticated using (is_group_member(group_id));
+drop policy if exists "gm leave or kick" on public.group_members;
+create policy "gm leave or kick" on public.group_members for delete to authenticated using (
+  user_id = auth.uid() or exists (select 1 from groups g where g.id = group_id and g.owner_id = auth.uid())
+);
+
+create or replace function public.are_friends(a uuid, b uuid) returns boolean
+language sql security definer set search_path = public stable as $$
+  select exists (select 1 from relations where status = 'accepted' and least(from_id, to_id) = least(a, b) and greatest(from_id, to_id) = greatest(a, b));
+$$;
+
+create or replace function public.create_group(p_name text, p_members uuid[]) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare gid uuid; m uuid;
+begin
+  if auth.uid() is null then raise exception 'Não autenticado.'; end if;
+  if coalesce(array_length(p_members, 1), 0) < 1 then raise exception 'Escolha pelo menos um amigo.'; end if;
+  if array_length(p_members, 1) > 24 then raise exception 'Máximo de 25 pessoas no grupo.'; end if;
+  foreach m in array p_members loop
+    if m <> auth.uid() and not are_friends(auth.uid(), m) then raise exception 'Só dá para adicionar amigos.'; end if;
+  end loop;
+  insert into groups (name, owner_id) values (coalesce(trim(p_name), ''), auth.uid()) returning id into gid;
+  insert into group_members (group_id, user_id) values (gid, auth.uid());
+  foreach m in array p_members loop
+    insert into group_members (group_id, user_id) values (gid, m) on conflict do nothing;
+  end loop;
+  return gid;
+end $$;
+grant execute on function public.create_group(text, uuid[]) to authenticated;
+
+create or replace function public.add_group_members(gid uuid, p_members uuid[]) returns void
+language plpgsql security definer set search_path = public as $$
+declare m uuid;
+begin
+  if not is_group_member(gid) then raise exception 'Você não está nesse grupo.'; end if;
+  if (select count(*) from group_members where group_id = gid) + array_length(p_members, 1) > 25 then raise exception 'Máximo de 25 pessoas no grupo.'; end if;
+  foreach m in array p_members loop
+    if not are_friends(auth.uid(), m) then raise exception 'Só dá para adicionar amigos.'; end if;
+    insert into group_members (group_id, user_id) values (gid, m) on conflict do nothing;
+  end loop;
+end $$;
+grant execute on function public.add_group_members(uuid, uuid[]) to authenticated;
+
 -- ---------- mensagens ----------
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
@@ -218,7 +283,8 @@ create or replace function public.can_access(cid uuid) returns boolean
 language sql security definer set search_path = public stable as $$
   select exists (select 1 from channels c join server_members m on m.server_id = c.server_id
                  where c.id = cid and m.user_id = auth.uid())
-      or exists (select 1 from dms where id = cid and auth.uid() in (user_a, user_b));
+      or exists (select 1 from dms where id = cid and auth.uid() in (user_a, user_b))
+      or exists (select 1 from group_members where group_id = cid and user_id = auth.uid());
 $$;
 grant execute on function public.can_access(uuid) to authenticated;
 
@@ -266,6 +332,8 @@ language sql security definer set search_path = public stable as $$
     select c.id from channels c join server_members sm on sm.server_id = c.server_id and sm.user_id = auth.uid()
     union
     select d.id from dms d where auth.uid() in (d.user_a, d.user_b)
+    union
+    select gm.group_id from group_members gm where gm.user_id = auth.uid()
   )
   select r.id, (select m.id from messages m where m.channel_id = r.id order by m.created_at desc limit 1)
   from rooms r;
@@ -283,12 +351,14 @@ drop trigger if exists channel_deleted on public.channels;
 create trigger channel_deleted after delete on public.channels for each row execute function public.on_room_deleted();
 drop trigger if exists dm_deleted on public.dms;
 create trigger dm_deleted after delete on public.dms for each row execute function public.on_room_deleted();
+drop trigger if exists group_deleted on public.groups;
+create trigger group_deleted after delete on public.groups for each row execute function public.on_room_deleted();
 
 -- ---------- tempo real ----------
 do $$
 declare t text;
 begin
-  foreach t in array array['profiles', 'relations', 'servers', 'server_members', 'channels', 'dms', 'messages'] loop
+  foreach t in array array['profiles', 'relations', 'servers', 'server_members', 'channels', 'dms', 'messages', 'groups', 'group_members'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;
@@ -307,5 +377,35 @@ drop policy if exists "uploads delete own" on storage.objects;
 create policy "uploads delete own" on storage.objects for delete to authenticated
   using (bucket_id = 'uploads' and (storage.foldername(name))[1] = auth.uid()::text);
 
--- mostra o código de convite
-select value as codigo_de_convite from public.app_config where key = 'invite_code';
+-- conferência
+select (select count(*) from public.profiles) as perfis, (select count(*) from public.groups) as grupos;
+
+-- ---------- registro de chamadas ----------
+alter table public.messages add column if not exists type text not null default 'text';
+alter table public.messages add column if not exists meta jsonb not null default '{}'::jsonb;
+alter table public.messages drop constraint if exists messages_type_check;
+alter table public.messages add constraint messages_type_check check (type in ('text', 'call'));
+
+-- qualquer participante da conversa atualiza o status da chamada (só avança, nunca volta)
+create or replace function public.set_call_status(mid uuid, p_status text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  m messages;
+  cur text;
+  now_ms bigint := (extract(epoch from now()) * 1000)::bigint;
+begin
+  select * into m from messages where id = mid for update;
+  if not found or m.type <> 'call' or not can_access(m.channel_id) then raise exception 'Sem acesso.'; end if;
+  if p_status not in ('answered', 'missed', 'declined', 'ended') then raise exception 'Status inválido.'; end if;
+  cur := coalesce(m.meta ->> 'status', 'ringing');
+  if cur in ('ended', 'missed', 'declined') then return; end if;
+  if p_status in ('missed', 'declined') and cur <> 'ringing' then return; end if;
+  if p_status = 'answered' and cur <> 'ringing' then return; end if;
+  update messages set meta = meta || jsonb_build_object('status', p_status)
+    || case when p_status = 'answered' then jsonb_build_object('answeredAt', now_ms, 'answeredBy', auth.uid())
+            when p_status = 'ended' then jsonb_build_object('endedAt', now_ms)
+            when p_status = 'declined' then jsonb_build_object('declinedBy', auth.uid())
+            else '{}'::jsonb end
+  where id = mid;
+end $$;
+grant execute on function public.set_call_status(uuid, text) to authenticated;

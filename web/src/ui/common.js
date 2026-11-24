@@ -5,7 +5,7 @@ import { closeModal, statusOf } from '../actions.js';
 
 export const initials = (name = '?') => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
-export function Avatar({ id, size = 40, status = false, ring = false, user: u0 }) {
+export function Avatar({ id, size = 36, status = false, ring = false, user: u0 }) {
   const u = useS((s) => u0 || s.users[id]);
   const st = useS((s) => (status ? statusOf(s, id) : null));
   const speaking = useS((s) => (ring ? !!s.speaking[id] : false));
@@ -19,7 +19,7 @@ export function Avatar({ id, size = 40, status = false, ring = false, user: u0 }
 export const STATUS_LABEL = { online: 'Online', idle: 'Ausente', dnd: 'Não perturbe', invisible: 'Invisível', offline: 'Offline' };
 
 /** botão de vidro redondo/pílula */
-export const GBtn = ({ icon, label, onClick, active, danger, class: c = '', title, size = 20, children, ...rest }) => html`
+export const GBtn = ({ icon, label, onClick, active, danger, class: c = '', title, size = 17, children, ...rest }) => html`
   <button type="button" class=${cx('gbtn', active && 'active', danger && 'danger', c)} title=${title || label} aria-label=${title || label} onClick=${onClick} ...${rest}>
     ${icon ? html`<${Icon} n=${icon} s=${size} />` : null}${label && !c.includes('icon-only') ? html`<span>${label}</span>` : null}${children}
   </button>`;
@@ -42,10 +42,10 @@ export function Modal({ title, children, wide, onClose = closeModal, class: c = 
   }, []);
   return html`
     <div class="modal-wrap" onPointerDown=${(e) => e.target === e.currentTarget && onClose()}>
-      <div class=${cx('modal pop', wide && 'wide', c)} role="dialog" aria-modal="true" aria-label=${title}>
+      <div class=${cx('modal sheet pop', wide && 'wide', c)} role="dialog" aria-modal="true" aria-label=${title}>
         <header class="modal-head">
           <h2>${title}</h2>
-          <button type="button" class="gbtn icon-only sm" aria-label="Fechar" onClick=${onClose}><${Icon} n="x" s=${18} /></button>
+          <button type="button" class="gbtn icon-only sm" aria-label="Fechar" onClick=${onClose}><${Icon} n="x" s=${15} /></button>
         </header>
         <div class="modal-body">${children}</div>
         ${footer ? html`<footer class="modal-foot">${footer}</footer>` : null}
@@ -53,12 +53,30 @@ export function Modal({ title, children, wide, onClose = closeModal, class: c = 
     </div>`;
 }
 
+/** campo de senha com botão de mostrar/esconder */
+export function PasswordInput(props) {
+  const [show, setShow] = useState(false);
+  return html`
+    <span class="pw-wrap">
+      <input ...${props} type=${show ? 'text' : 'password'} />
+      <button type="button" class="pw-eye" aria-label=${show ? 'Esconder senha' : 'Mostrar senha'} title=${show ? 'Esconder senha' : 'Mostrar senha'}
+        onClick=${() => setShow(!show)}><${Icon} n=${show ? 'eyeOff' : 'eye'} s=${17} /></button>
+    </span>`;
+}
+
+/** avatar de grupo: ícone próprio ou dois avatares sobrepostos */
+export function GroupAvatar({ g, size = 36 }) {
+  const ids = g.members.filter((m) => m !== S.uid).slice(0, 2);
+  if (g.icon) return html`<span class="group-av img" style=${`--s:${size}px`}><img src=${g.icon} alt="" /></span>`;
+  return html`<span class="group-av" style=${`--s:${size}px`}>${ids.map((id) => html`<${Avatar} key=${id} id=${id} size=${Math.round(size * 0.68)} />`)}</span>`;
+}
+
 export const Field = ({ label, hint, children }) => html`
   <label class="field"><span class="field-label">${label}</span>${children}${hint ? html`<small class="field-hint">${hint}</small>` : null}</label>`;
 
 export function Toasts() {
   const toasts = useS((s) => s.ui.toasts);
-  return html`<div class="toasts" aria-live="polite">${toasts.map((t) => html`<div key=${t.id} class=${cx('toast glass pop', t.kind)}>${t.text}</div>`)}</div>`;
+  return html`<div class="toasts" aria-live="polite">${toasts.map((t) => html`<div key=${t.id} class=${cx('toast lg pop', t.kind)}>${t.text}</div>`)}</div>`;
 }
 
 export const Spinner = ({ s = 20 }) => html`<span class="spinner" style=${`--s:${s}px`}></span>`;

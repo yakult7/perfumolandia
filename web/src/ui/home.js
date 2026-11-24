@@ -3,8 +3,8 @@ import { useS, S, set } from '../store.js';
 import { Icon } from '../icons.js';
 import { GlassBar } from '../glass.js';
 import * as api from '../api.js';
-import { openDM, callDM, run, safe, isUnread, statusOf, dmPartner, openModal, openMenu, go, toast } from '../actions.js';
-import { Avatar, GBtn, Empty, STATUS_LABEL } from './common.js';
+import { openDM, callDM, run, safe, isUnread, statusOf, dmPartner, openModal, openMenu, go, toast, groupName } from '../actions.js';
+import { Avatar, GBtn, Empty, STATUS_LABEL, GroupAvatar } from './common.js';
 
 export function Friends({ mobile }) {
   const tab = useS((s) => s.view.homeTab);
@@ -23,7 +23,7 @@ export function Friends({ mobile }) {
   ];
   return html`
     <div class="friends">
-      <header class=${cx('top glass', mobile && 'mob-head')}>
+      <header class=${cx('top lg', mobile && 'mob-head')}>
         ${mobile ? html`<h1>Amigos</h1>` : html`<div class="top-title"><${Icon} n="users" s=${20} /><b>Amigos</b></div>`}
         <${GlassBar} items=${items} value=${tab} onChange=${setTab} class="seg-bar" itemClass="seg-item" />
       </header>
@@ -88,34 +88,49 @@ function AddFriend() {
     <div class="addfriend">
       <h3>Adicionar amigo</h3>
       <p class="muted">Digite o nome de usuário. O seu é <button class="chip" onClick=${() => navigator.clipboard?.writeText(me.username).then(() => toast('Copiado.'))}>@${me.username} <${Icon} n="copy" s=${13} /></button></p>
-      <form class="addfriend-form glass" onSubmit=${submit}>
+      <form class="addfriend-form lg" onSubmit=${submit}>
         <input value=${name} onInput=${(e) => setName(e.target.value)} placeholder="usuario_do_amigo" autocapitalize="none" spellcheck="false" />
         <button class="gbtn primary" disabled=${busy || !name.trim()}>Enviar pedido</button>
       </form>
-      <div class="invite-card">
-        <${Icon} n="sparkles" s=${20} />
-        <div><b>Chamando alguém novo?</b><p class="muted">Mande o link do app e o código de convite <code>${S.inviteCode}</code>. Sem o código não dá para criar conta.</p></div>
-      </div>
+      <p class="muted small">Amigo ainda não tem o app? Em Ajustes → Sobre tem um convite pronto com os links de download.</p>
     </div>`;
 }
 
 export function DMList() {
   const dms = useS((s) => s.dms);
+  const groups = useS((s) => s.groups);
   const last = useS((s) => s.lastIds);
   const cur = useS((s) => s.view.channelId);
   const voice = useS((s) => s.voice);
-  // conversas com mensagem mais recente primeiro (ids do Postgres não ordenam por tempo, então usa o cache local)
-  const list = Object.values(dms).filter((d) => S.users[d.members.find((m) => m !== S.uid)]);
-  list.sort((a, b) => (S.messages[b.id]?.list.at(-1)?.createdAt || (last[b.id] ? 1 : 0)) - (S.messages[a.id]?.list.at(-1)?.createdAt || (last[a.id] ? 1 : 0)));
+  // mais recentes primeiro (usa o cache local de mensagens; quem tem mensagem vem antes de quem não tem)
+  const rank = (id) => S.messages[id]?.list.at(-1)?.createdAt || (last[id] ? 1 : 0);
+  const list = [
+    ...Object.values(dms).filter((d) => S.users[d.members.find((m) => m !== S.uid)]).map((d) => ({ d, group: false })),
+    ...Object.values(groups).map((d) => ({ d, group: true })),
+  ].sort((a, b) => rank(b.d.id) - rank(a.d.id));
   return html`
     <div class="dmlist">
       <button class=${cx('ch big', !cur && 'on')} onClick=${() => { set((s) => { s.view = { serverId: null, channelId: null, homeTab: s.view.homeTab === 'add' ? 'online' : s.view.homeTab }; s.ui = { ...s.ui, tab: 'friends', pane: 'list', stage: false }; }); }}>
-        <${Icon} n="users" s=${20} /><span>Amigos</span>
+        <${Icon} n="users" s=${18} /><span>Amigos</span>
       </button>
-      <div class="ch-group-head"><span>Mensagens diretas</span></div>
-      ${list.length ? list.map((d) => html`<${DMRow} key=${d.id} d=${d} on=${cur === d.id} inCall=${!!voice[d.id]?.length} />`)
-        : html`<p class="muted small pad">Abra uma conversa pela lista de amigos.</p>`}
+      <div class="ch-group-head"><span>Conversas</span>
+        <button class="mini-btn" title="Novo grupo" onClick=${() => openModal('createGroup')}><${Icon} n="plus" s=${15} /></button>
+      </div>
+      ${list.length ? list.map(({ d, group }) => (group
+        ? html`<${GroupRow} key=${d.id} g=${d} on=${cur === d.id} inCall=${!!voice[d.id]?.length} />`
+        : html`<${DMRow} key=${d.id} d=${d} on=${cur === d.id} inCall=${!!voice[d.id]?.length} />`))
+        : html`<p class="muted small pad">Abra uma conversa pela lista de amigos ou crie um grupo no +.</p>`}
     </div>`;
+}
+
+function GroupRow({ g, on, inCall }) {
+  const unread = useS((s) => isUnread(s, g.id));
+  return html`
+    <button class=${cx('dm', on && 'on', unread && 'unread')} onClick=${() => { set((s) => { s.ui = { ...s.ui, stage: false }; }); go(null, g.id); }}>
+      <${GroupAvatar} g=${g} size=${32} />
+      <span class="dm-name"><b>${groupName(g)}</b><small>${inCall ? '📞 Em chamada' : `${g.members.length} membros`}</small></span>
+      ${unread ? html`<i class="pill-dot"></i>` : null}
+    </button>`;
 }
 
 function DMRow({ d, on, inCall }) {
@@ -125,7 +140,7 @@ function DMRow({ d, on, inCall }) {
   const st = useS((s) => statusOf(s, other));
   return html`
     <button class=${cx('dm', on && 'on', unread && 'unread')} onClick=${() => { set((s) => { s.ui = { ...s.ui, stage: false }; }); go(null, d.id); }}>
-      <${Avatar} id=${other} size=${36} status />
+      <${Avatar} id=${other} size=${32} status />
       <span class="dm-name"><b>${u?.displayName}</b><small>${inCall ? '📞 Em chamada' : u?.customStatus || STATUS_LABEL[st]}</small></span>
       ${unread ? html`<i class="pill-dot"></i>` : null}
     </button>`;

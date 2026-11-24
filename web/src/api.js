@@ -33,10 +33,13 @@ function translate(m = '') {
 export const mapUser = (p) => ({
   id: p.id, username: p.username, displayName: p.display_name, avatar: p.avatar_url, color: p.color,
   chosenStatus: p.status, customStatus: p.custom_status, bio: p.bio,
+  banner: p.banner_url || null, accent: p.accent_color || null, pronouns: p.pronouns || '', createdAt: Date.parse(p.created_at),
 });
+const mapGroup = (g, members = []) => ({ id: g.id, name: g.name, icon: g.icon_url, ownerId: g.owner_id, members });
 export const mapMsg = (m) => ({
   id: m.id, channelId: m.channel_id, authorId: m.author_id, content: m.content, attachments: m.attachments || [],
   replyTo: m.reply_to, reactions: m.reactions || {}, createdAt: Date.parse(m.created_at), editedAt: m.edited_at ? Date.parse(m.edited_at) : null,
+  type: m.type || 'text', meta: m.meta || {},
 });
 const mapRel = (r) => ({ id: r.id, from: r.from_id, to: r.to_id, status: r.status });
 const mapDm = (d) => ({ id: d.id, members: [d.user_a, d.user_b] });
@@ -49,12 +52,10 @@ const mapServer = (s, members = [], channels = []) => ({
 const emailOf = (u) => `${u.trim().toLowerCase()}@${EMAIL_DOMAIN}`;
 const validUser = (u) => /^[a-z0-9_.]{3,20}$/.test(u);
 
-export async function register({ username, password, displayName, code }) {
+export async function register({ username, password, displayName }) {
   const u = username.trim().toLowerCase();
   if (!validUser(u)) throw new Error('Usuário: 3 a 20 caracteres (letras minúsculas, números, _ ou .).');
   if (password.length < 6) throw new Error('A senha precisa ter pelo menos 6 caracteres.');
-  const okCode = must(await sb.rpc('check_invite', { code }));
-  if (!okCode) throw new Error('Código de convite incorreto.');
   const { error } = await sb.auth.signUp({ email: emailOf(u), password });
   if (error && !/already registered/i.test(error.message)) throw new Error(translate(error.message));
   if (error) {
@@ -62,7 +63,7 @@ export async function register({ username, password, displayName, code }) {
     const r = await sb.auth.signInWithPassword({ email: emailOf(u), password });
     if (r.error) throw new Error('Esse usuário já existe.');
   }
-  must(await sb.rpc('create_profile', { p_username: u, p_display_name: displayName || u, p_code: code }));
+  must(await sb.rpc('create_profile', { p_username: u, p_display_name: displayName || u }));
   await start();
 }
 
@@ -72,10 +73,11 @@ export async function login({ username, password }) {
 }
 
 export async function logout() {
-  rtc.leave(true);
+  await rtc.leave(true);
   await teardown();
   await sb.auth.signOut().catch(() => {});
-  set((s) => { s.me = null; s.ready = false; s.authed = false; });
+  // recarrega limpo: evita canais de tempo real antigos interferindo na próxima conta
+  location.reload();
 }
 
 export async function changePassword(password) {
@@ -102,7 +104,7 @@ export async function start() {
 }
 
 async function loadAll(uid) {
-  const [profiles, relations, servers, members, channels, dms, last, code] = await Promise.all([
+  const [profiles, relations, servers, members, channels, dms, last, groups, gmembers] = await Promise.all([
     sb.from('profiles').select('*'),
     sb.from('relations').select('*'),
     sb.from('servers').select('*'),
@@ -110,7 +112,8 @@ async function loadAll(uid) {
     sb.from('channels').select('*'),
     sb.from('dms').select('*'),
     sb.rpc('last_messages'),
-    sb.rpc('get_invite_code'),
+    sb.from('groups').select('*'),
+    sb.from('group_members').select('group_id,user_id'),
   ].map((p) => p.then(must)));
   const users = Object.fromEntries(profiles.map((p) => [p.id, mapUser(p)]));
   const svs = {};
@@ -125,7 +128,7 @@ async function loadAll(uid) {
     s.servers = svs;
     s.dms = Object.fromEntries(dms.map((d) => [d.id, mapDm(d)]));
     s.lastIds = Object.fromEntries(last.filter((x) => x.message_id).map((x) => [x.channel_id, x.message_id]));
-    s.inviteCode = code;
+    s.groups = Object.fromEntries(groups.map((g) => [g.id, mapGroup(g, gmembers.filter((m) => m.group_id === g.id).map((m) => m.user_id))]));
     s.messages = {};
   });
 }
@@ -144,12 +147,43 @@ async function refreshServer(id) {
   set((s) => { s.servers = { ...s.servers, [id]: mapServer(srv.data, (members.data || []).map((m) => m.user_id), channels.data || []) }; });
 }
 
+export async function refreshGroup(id) {
+  const [g, m] = await Promise.all([
+    sb.from('groups').select('*').eq('id', id).maybeSingle(),
+    sb.from('group_members').select('group_id,user_id').eq('group_id', id),
+  ]);
+  if (!g.data || !(m.data || []).some((x) => x.user_id === S.uid)) {
+    set((s) => { const n = { ...s.groups }; delete n[id]; s.groups = n; });
+    if (S.view.channelId === id) go(null);
+    return;
+  }
+  set((s) => { s.groups = { ...s.groups, [id]: mapGroup(g.data, m.data.map((x) => x.user_id)) }; });
+}
+
 // ---------- tempo real ----------
 let dbChan, globalChan, roomChan;
 const typingTimers = {};
 
 function subscribeRealtime(uid) {
-  dbChan = sb.channel('db-' + clientId)
+  makeDb(uid);
+  makeGlobal();
+  // vigia: se algum canal cair (rede, servidor), recria sozinho
+  clearInterval(watchTimer);
+  watchTimer = setInterval(() => {
+    if (!started) return;
+    const live = sb.getChannels();
+    const dead = (c) => !c || !live.includes(c) || ['closed', 'errored'].includes(c.state);
+    if (dead(globalChan)) { set((s) => { s.connected = false; }); makeGlobal(); }
+    if (dead(dbChan)) makeDb(uid);
+    if (roomInfo && dead(roomChan)) joinRoomChannel(roomInfo.id, roomInfo.handlers).catch(() => {});
+  }, 2500);
+}
+let watchTimer = 0;
+let roomInfo = null;
+
+function makeDb(uid) {
+  if (dbChan) sb.removeChannel(dbChan).catch(() => {});
+  dbChan = sb.channel('db-' + clientId + '-' + Date.now().toString(36))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, onMessageChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, ({ new: p, eventType }) => {
       if (eventType === 'DELETE') return;
@@ -184,6 +218,18 @@ function subscribeRealtime(uid) {
       if (sid) refreshServer(sid);
       else for (const id of Object.keys(S.servers)) refreshServer(id);
     })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'groups' }, ({ new: n, old, eventType }) => {
+      const id = eventType === 'DELETE' ? old.id : n.id;
+      if (eventType === 'DELETE') {
+        set((s) => { const x = { ...s.groups }; delete x[id]; s.groups = x; });
+        if (S.view.channelId === id) go(null);
+      } else refreshGroup(id);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members' }, ({ new: n, old, eventType }) => {
+      const row = eventType === 'DELETE' ? old : n;
+      if (row?.group_id) refreshGroup(row.group_id);
+      else for (const id of Object.keys(S.groups)) refreshGroup(id);
+    })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, ({ new: n, old, eventType }) => {
       const sid = eventType === 'DELETE' ? Object.values(S.servers).find((sv) => sv.channels.some((c) => c.id === old.id))?.id : n.server_id;
       if (sid) refreshServer(sid);
@@ -191,23 +237,31 @@ function subscribeRealtime(uid) {
     .subscribe((st) => {
       if (st === 'SUBSCRIBED' && S.ready) loadAll(uid).catch(() => {}); // reconectou: recarrega
     });
-
-  globalChan = sb.channel('global', { config: { presence: { key: clientId }, broadcast: { self: false } } })
-    .on('presence', { event: 'sync' }, onPresenceSync)
-    .on('broadcast', { event: 'ev' }, ({ payload }) => onEvent(payload))
-    .subscribe(async (st) => {
-      set((s) => { s.connected = st === 'SUBSCRIBED'; });
-      if (st === 'SUBSCRIBED') await trackPresence();
-    });
-
-  addEventListener('online', () => set((s) => { s.connected = true; }));
-  addEventListener('offline', () => set((s) => { s.connected = false; }));
 }
 
+function makeGlobal() {
+  const old = globalChan;
+  globalChan = null;
+  if (old) sb.removeChannel(old).catch(() => {});
+  const g = sb.channel('global', { config: { presence: { key: clientId }, broadcast: { self: false } } })
+    .on('presence', { event: 'sync' }, () => { if (globalChan === g) onPresenceSync(); })
+    .on('broadcast', { event: 'ev' }, ({ payload }) => { if (globalChan === g) onEvent(payload); });
+  globalChan = g;
+  g.subscribe(async (st) => {
+    if (globalChan !== g) return; // canal antigo (ex.: depois de sair e entrar de novo)
+    set((s) => { s.connected = st === 'SUBSCRIBED'; });
+    if (st === 'SUBSCRIBED') await trackPresence();
+  });
+}
+addEventListener('online', () => set((s) => { s.connected = true; }));
+addEventListener('offline', () => set((s) => { s.connected = false; }));
+
 async function teardown() {
+  clearInterval(watchTimer);
+  started = false;
+  roomInfo = null;
   for (const c of [dbChan, globalChan, roomChan]) if (c) await sb.removeChannel(c).catch(() => {});
   dbChan = globalChan = roomChan = null;
-  started = false;
 }
 
 function onMessageChange({ eventType, new: row, old }) {
@@ -237,7 +291,8 @@ function onMessageChange({ eventType, new: row, old }) {
   const mine = m.authorId === S.uid;
   const viewing = S.view.channelId === m.channelId && document.visibilityState === 'visible';
   if (mine || viewing) return markRead(m.channelId);
-  const isDM = !!S.dms[m.channelId];
+  if (m.type === 'call') return; // a chamada já toca o próprio som
+  const isDM = !!S.dms[m.channelId] || !!S.groups[m.channelId];
   const mentioned = m.content.includes('@' + S.me.username) || m.content.includes('@todos');
   if (S.me.chosenStatus !== 'dnd' && (isDM || mentioned)) {
     sounds.message();
@@ -247,15 +302,23 @@ function onMessageChange({ eventType, new: row, old }) {
 
 // ---------- presença (online + quem está em qual chamada) ----------
 let myVoice = { room: null, state: null };
+// presença: uma atualização por vez (duas ao mesmo tempo derrubavam o canal) e sempre a mais recente
+let tracking = null, trackAgain = false;
 async function trackPresence() {
-  if (!globalChan) return;
-  await globalChan.track({
-    uid: S.uid,
-    status: S.me?.chosenStatus || 'online',
-    room: myVoice.room,
-    state: myVoice.state,
-    at: Date.now(),
-  }).catch(() => {});
+  if (tracking) { trackAgain = true; return tracking; }
+  tracking = (async () => {
+    do {
+      trackAgain = false;
+      const ch = globalChan;
+      if (!ch || ch.state !== 'joined') break;
+      await Promise.race([
+        ch.track({ uid: S.uid, status: S.me?.chosenStatus || 'online', room: myVoice.room, state: myVoice.state, at: Date.now() }).catch(() => {}),
+        new Promise((r) => setTimeout(r, 6000)),
+      ]);
+    } while (trackAgain);
+    tracking = null;
+  })();
+  return tracking;
 }
 export function setVoicePresence(room, state) {
   myVoice = { room, state };
@@ -282,6 +345,7 @@ function onPresenceSync() {
     rtc.onVoiceUpdate(room, voice[room] || []);
     if (S.outgoing?.dmId === room && (voice[room] || []).some((p) => p.userId !== S.uid)) {
       sounds.stopRing();
+      if (S.outgoing.msgId) setCallStatus(S.outgoing.msgId, 'answered');
       set((s) => { s.outgoing = null; });
     }
   }
@@ -292,7 +356,7 @@ export function sendEvent(payload) {
   return globalChan?.send({ type: 'broadcast', event: 'ev', payload: { ...payload, from: S.uid } });
 }
 function onEvent(e) {
-  if (e.to && e.to !== S.uid) return;
+  if (e.to && (Array.isArray(e.to) ? !e.to.includes(S.uid) : e.to !== S.uid)) return;
   switch (e.type) {
     case 'typing': {
       if (!canSee(e.channelId)) return;
@@ -307,9 +371,11 @@ function onEvent(e) {
       break;
     }
     case 'ring':
-      if (!S.dms[e.dmId] || S.call?.roomId === e.dmId || S.me.chosenStatus === 'dnd') return;
-      set((s) => { s.incoming = { dmId: e.dmId, from: e.from }; });
+      if ((!S.dms[e.dmId] && !S.groups[e.dmId]) || S.call?.roomId === e.dmId || S.me.chosenStatus === 'dnd') return;
+      if (S.incoming?.dmId === e.dmId) return; // já está tocando (o toque é reenviado a cada 8s)
+      set((s) => { s.incoming = { dmId: e.dmId, from: e.from, msgId: e.msgId || null }; });
       sounds.ring(false);
+      window.perfumolandiaDesktop?.attention?.();
       notifyDesktop({ call: true, authorId: e.from, channelId: e.dmId });
       break;
     case 'ring-cancel':
@@ -326,7 +392,7 @@ function onEvent(e) {
       break;
   }
 }
-const canSee = (cid) => !!S.dms[cid] || Object.values(S.servers).some((sv) => sv.channels.some((c) => c.id === cid));
+const canSee = (cid) => !!S.dms[cid] || !!S.groups[cid] || Object.values(S.servers).some((sv) => sv.channels.some((c) => c.id === cid));
 
 let lastTyping = 0;
 export function sendTyping(channelId) {
@@ -339,18 +405,27 @@ export function sendTyping(channelId) {
 let pendingCands = {};
 let candTimer = null;
 export async function joinRoomChannel(roomId, handlers) {
-  if (roomChan) await sb.removeChannel(roomChan).catch(() => {});
-  roomChan = sb.channel('room:' + roomId, { config: { broadcast: { self: false, ack: false } } })
+  roomInfo = { id: roomId, handlers };
+  const old = roomChan;
+  roomChan = null;
+  if (old) await sb.removeChannel(old).catch(() => {});
+  const ch = sb.channel('room:' + roomId, { config: { broadcast: { self: false, ack: false } } })
     .on('broadcast', { event: 'sig' }, ({ payload }) => { if (payload.to === clientId) handlers.signal(payload); })
     .on('broadcast', { event: 'watch' }, ({ payload }) => { if (payload.to === clientId) handlers.watch(payload); })
     .on('broadcast', { event: 'nsig' }, ({ payload }) => { if (payload.to === clientId) handlers.nsignal(payload); });
-  await new Promise((res) => roomChan.subscribe((st) => { if (st === 'SUBSCRIBED') res(); }));
+  roomChan = ch;
+  await new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error('tempo esgotado')), 15000);
+    ch.subscribe((st) => { if (st === 'SUBSCRIBED') { clearTimeout(t); res(); } });
+  });
 }
 export async function leaveRoomChannel() {
+  roomInfo = null;
   clearTimeout(candTimer);
   pendingCands = {};
-  if (roomChan) await sb.removeChannel(roomChan).catch(() => {});
+  const old = roomChan;
   roomChan = null;
+  if (old) await sb.removeChannel(old).catch(() => {});
 }
 /** envia SDP na hora; candidatos ICE em lotes (economiza eventos do plano grátis) */
 export function sendSignal(to, data) {
@@ -387,8 +462,19 @@ export async function fetchMessages(cid, beforeTs) {
 }
 export async function insertMessage(row) {
   return mapMsg(must(await sb.from('messages').insert({
-    channel_id: row.channelId, content: row.content, attachments: row.attachments, reply_to: row.replyTo,
+    channel_id: row.channelId, content: row.content || '', attachments: row.attachments || [], reply_to: row.replyTo || null,
+    ...(row.type ? { type: row.type, meta: row.meta || {} } : {}),
   }).select().single()));
+}
+/** registro de chamada no chat */
+export const insertCallLog = (channelId) => insertMessage({ channelId, type: 'call', meta: { status: 'ringing', by: S.uid, startedAt: Date.now() } });
+export const setCallStatus = (mid, status) => sb.rpc('set_call_status', { mid, p_status: status }).then(({ error }) => { if (error) console.warn('status da chamada', error.message); });
+export async function latestCallLog(channelId) {
+  const box = S.messages[channelId]?.list;
+  const local = box && [...box].reverse().find((m) => m.type === 'call');
+  if (local) return local;
+  const { data } = await sb.from('messages').select('*').eq('channel_id', channelId).eq('type', 'call').order('created_at', { ascending: false }).limit(1);
+  return data?.[0] ? mapMsg(data[0]) : null;
 }
 export const editMessage = async (id, content) => must(await sb.from('messages').update({ content, edited_at: new Date().toISOString() }).eq('id', id));
 export const deleteMessage = async (id) => must(await sb.from('messages').delete().eq('id', id));
@@ -400,8 +486,11 @@ export async function updateProfile(patch) {
   if ('avatar' in patch) row.avatar_url = patch.avatar;
   if ('status' in patch) row.status = patch.status;
   if ('customStatus' in patch) row.custom_status = patch.customStatus.slice(0, 80);
-  if ('bio' in patch) row.bio = patch.bio.slice(0, 190);
+  if ('bio' in patch) row.bio = patch.bio.slice(0, 400);
   if ('color' in patch) row.color = patch.color;
+  if ('accent' in patch) row.accent_color = patch.accent;
+  if ('banner' in patch) row.banner_url = patch.banner;
+  if ('pronouns' in patch) row.pronouns = patch.pronouns.slice(0, 40);
   const p = must(await sb.from('profiles').update(row).eq('id', S.uid).select().single());
   set((s) => { s.users = { ...s.users, [p.id]: mapUser(p) }; s.me = s.users[p.id]; });
   if ('status' in patch) trackPresence();
@@ -432,6 +521,34 @@ export async function openDmRow(userId) {
   const d = mapDm(must(await sb.rpc('open_dm', { other: userId })));
   set((s) => { s.dms = { ...s.dms, [d.id]: d }; });
   return d;
+}
+
+// grupos
+export async function createGroup(name, memberIds) {
+  const id = must(await sb.rpc('create_group', { p_name: (name || '').trim().slice(0, 48), p_members: memberIds }));
+  await refreshGroup(id);
+  return id;
+}
+export async function addGroupMembers(id, memberIds) {
+  must(await sb.rpc('add_group_members', { gid: id, p_members: memberIds }));
+  await refreshGroup(id);
+}
+export async function updateGroup(id, patch) {
+  const row = {};
+  if ('name' in patch) row.name = patch.name.trim().slice(0, 48);
+  if ('icon' in patch) row.icon_url = patch.icon;
+  must(await sb.from('groups').update(row).eq('id', id));
+  await refreshGroup(id);
+}
+export async function leaveGroup(id) {
+  const g = S.groups[id];
+  if (g?.ownerId === S.uid && g.members.length <= 1) must(await sb.from('groups').delete().eq('id', id));
+  else must(await sb.from('group_members').delete().eq('group_id', id).eq('user_id', S.uid));
+  set((s) => { const n = { ...s.groups }; delete n[id]; s.groups = n; });
+}
+export async function kickFromGroup(id, userId) {
+  must(await sb.from('group_members').delete().eq('group_id', id).eq('user_id', userId));
+  await refreshGroup(id);
 }
 
 export async function createServer(name, icon) {
@@ -517,7 +634,7 @@ function handleDeepLink() {
   const c = q.get('c') || q.get('call');
   if (!c) return;
   history.replaceState(null, '', location.pathname);
-  if (S.dms[c]) {
+  if (S.dms[c] || S.groups[c]) {
     go(null, c);
     if (q.get('call')) rtc.join(c);
   } else {

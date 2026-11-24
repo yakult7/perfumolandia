@@ -3,7 +3,7 @@
 import { S, set, setUI } from './store.js';
 import * as api from './api.js';
 import { sounds, audioCtx } from './sounds.js';
-import { toast } from './actions.js';
+import { toast, cancelOutgoing, closeCallLog } from './actions.js';
 import { TURN } from './config.js';
 
 export const QUALITY = {
@@ -425,6 +425,12 @@ function queueEarly(m) {
 
 export async function leave(silent = false) {
   if (!S.call) return;
+  const roomId = S.call.roomId;
+  const alone = !(S.voice[roomId] || []).some((p) => p.sid !== api.clientId);
+  if (S.outgoing?.dmId === roomId) cancelOutgoing();
+  else if (alone) closeCallLog(roomId);
+  // se o outro saiu ao mesmo tempo, a presença demora um pouco: confere de novo
+  else setTimeout(() => { if (!(S.voice[roomId] || []).length && S.call?.roomId !== roomId) closeCallLog(roomId); }, 5000);
   if (local.native) await stopNativeScreen();
   for (const p of peers.values()) p.close();
   peers.clear();
@@ -432,8 +438,9 @@ export async function leave(silent = false) {
   stopLocal('mic'); stopLocal('cam'); stopLocal('screen');
   for (const k of [...levels.keys()]) unwatchLevel(k);
   clearInterval(levelTimer); levelTimer = null;
-  set((s) => { s.call = null; s.speaking = {}; });
-  await api.setVoicePresence(null, null);
+  set((s) => { s.call = null; s.speaking = {}; s.ui = { ...s.ui, theater: null, callExpanded: false, callCollapsed: false }; });
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  api.setVoicePresence(null, null); // não espera: sair da chamada é imediato
   await api.leaveRoomChannel();
   if (!silent) sounds.leave();
 }
@@ -472,7 +479,8 @@ export function onVoiceUpdate(roomId, parts) {
     sounds.peerLeave();
     if (watching[sid]) watching = { ...watching, [sid]: false };
   }
-  patchCall({ watching, focus: S.call.focus && !seen.has(S.call.focus.sid) && S.call.focus.sid !== api.clientId ? null : S.call.focus });
+  const f = S.call.focus;
+  patchCall({ watching, focus: f && typeof f === 'object' && !seen.has(f.sid) && f.sid !== api.clientId ? null : f });
   applyVolumes();
 }
 

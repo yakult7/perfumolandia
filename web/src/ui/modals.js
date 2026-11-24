@@ -2,8 +2,9 @@ import { html, useState, useEffect, cx, isIOS, isStandalone } from '../lib.js';
 import { useS, S, persist } from '../store.js';
 import { Icon } from '../icons.js';
 import * as api from '../api.js';
-import { closeModal, run, safe, go, toast, openDM, acceptCall, declineCall, callDM, statusOf } from '../actions.js';
-import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, STATUS_LABEL } from './common.js';
+import { closeModal, run, safe, go, toast, openDM, acceptCall, declineCall, callDM, statusOf, groupName, openModal } from '../actions.js';
+import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, STATUS_LABEL, GroupAvatar } from './common.js';
+import { ProfileCard } from './profile.js';
 import { ScreenShareModal, VolumeModal } from './call.js';
 import { Settings } from './settings.js';
 import { EmojiPicker, QUICK } from './chat.js';
@@ -16,8 +17,92 @@ export function Modals() {
     addServer: AddServer, createChannel: CreateChannel, renameChannel: RenameChannel, invite: Invite,
     serverSettings: ServerSettings, confirm: Confirm, profile: Profile, image: ImageView, react: React,
     screenShare: ScreenShareModal, volume: VolumeModal, settings: Settings, install: InstallHelp,
+    createGroup: CreateGroup, groupSettings: GroupSettings, addToGroup: AddToGroup,
   }[m.name];
-  return C ? html`<${C} ...${m} />` : null;
+  return C ? html`<${C} key=${m.name + (m.tab || '')} ...${m} />` : null;
+}
+
+// ---------- grupos ----------
+function FriendPicker({ selected, setSelected, exclude = [] }) {
+  const [q, setQ] = useState('');
+  const rels = useS((s) => s.relations);
+  const friends = Object.values(rels).filter((r) => r.status === 'accepted')
+    .map((r) => (r.from === S.uid ? r.to : r.from))
+    .filter((id) => !exclude.includes(id) && S.users[id])
+    .filter((id) => !q || S.users[id].displayName.toLowerCase().includes(q.toLowerCase()) || S.users[id].username.includes(q.toLowerCase()))
+    .sort((a, b) => S.users[a].displayName.localeCompare(S.users[b].displayName));
+  const toggle = (id) => setSelected(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+  return html`
+    <input placeholder="Buscar amigos" value=${q} onInput=${(e) => setQ(e.target.value)} />
+    <div class="pick-list">
+      ${friends.length ? friends.map((id) => html`
+        <button key=${id} type="button" class=${cx('pick-row', selected.includes(id) && 'on')} onClick=${() => toggle(id)}>
+          <${Avatar} id=${id} size=${30} status />
+          <span class="grow"><b>${S.users[id].displayName}</b> <small class="muted">@${S.users[id].username}</small></span>
+          <i class="tick">${selected.includes(id) ? html`<${Icon} n="check" s=${13} />` : null}</i>
+        </button>`) : html`<p class="muted small pad">Nenhum amigo disponível. Adicione amigos primeiro.</p>`}
+    </div>`;
+}
+
+function CreateGroup({ preselect = [] }) {
+  const [sel, setSel] = useState(preselect);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const create = async () => {
+    setBusy(true);
+    try { const id = await run(api.createGroup(name, sel)); closeModal(); go(null, id); } catch {} finally { setBusy(false); }
+  };
+  return html`
+    <${Modal} title="Novo grupo">
+      <p class="muted">Converse e ligue com várias pessoas ao mesmo tempo, sem precisar de servidor.</p>
+      <${Field} label="Nome do grupo (opcional)"><input value=${name} maxlength="48" placeholder="Ex.: Squad do fim de semana" onInput=${(e) => setName(e.target.value)} /><//>
+      <${FriendPicker} selected=${sel} setSelected=${setSel} />
+      <button class="gbtn primary wide" disabled=${busy || !sel.length} onClick=${create}>Criar grupo${sel.length ? ` com ${sel.length + 1} pessoas` : ''}</button>
+    <//>`;
+}
+
+function AddToGroup({ id }) {
+  const g = useS((s) => s.groups[id]);
+  const [sel, setSel] = useState([]);
+  if (!g) return null;
+  return html`
+    <${Modal} title="Adicionar ao grupo">
+      <${FriendPicker} selected=${sel} setSelected=${setSel} exclude=${g.members} />
+      <button class="gbtn primary wide" disabled=${!sel.length} onClick=${() => run(api.addGroupMembers(id, sel), 'Adicionado!').then(closeModal).catch(() => {})}>Adicionar</button>
+    <//>`;
+}
+
+function GroupSettings({ id }) {
+  const g = useS((s) => s.groups[id]);
+  const [name, setName] = useState(g?.name || '');
+  if (!g) return null;
+  const owner = g.ownerId === S.uid;
+  const setIcon = async () => {
+    const f = await pickFile();
+    if (!f) return;
+    const [a] = await run(api.uploadFiles([f.type === 'image/gif' ? f : await shrinkImage(f, 256)]));
+    safe(api.updateGroup(id, { icon: a.url }), 'Ícone atualizado.');
+  };
+  return html`
+    <${Modal} title="Ajustes do grupo">
+      <div class="row center">
+        <button class="icon-pick" onClick=${setIcon}>${g.icon ? html`<img src=${g.icon} alt="" />` : html`<${Icon} n="image" s=${22} /><small>Ícone</small>`}</button>
+        <div class="grow stack">
+          <${Field} label="Nome"><input value=${name} maxlength="48" placeholder=${groupName({ ...g, name: '' })} onInput=${(e) => setName(e.target.value)} /><//>
+          <button class="gbtn primary sm" disabled=${name === g.name} onClick=${() => safe(api.updateGroup(id, { name }), 'Salvo.')}>Salvar nome</button>
+        </div>
+      </div>
+      <div class="field"><span class="field-label">Membros (${g.members.length})</span>
+        <div class="mem-list">
+          ${g.members.map((uid) => html`
+            <div class="mem-row" key=${uid}><${Avatar} id=${uid} size=${28} status /><span class="grow">${S.users[uid]?.displayName}${uid === g.ownerId ? html` <small class="muted">· criador</small>` : null}</span>
+              ${owner && uid !== S.uid ? html`<button class="gbtn sm plain danger" onClick=${() => safe(api.kickFromGroup(id, uid), 'Removido.')}>Remover</button>` : null}
+            </div>`)}
+        </div>
+        <button class="gbtn sm" onClick=${() => openModal('addToGroup', { id })}><${Icon} n="userPlus" s=${14} /> Adicionar amigos</button>
+      </div>
+      <button class="gbtn danger wide" onClick=${() => openModal('confirm', { title: 'Sair do grupo', text: 'Sair deste grupo? Você para de ver as mensagens.', cta: 'Sair', action: () => run(api.leaveGroup(id)).then(() => go(null)) })}>Sair do grupo</button>
+    <//>`;
 }
 
 function AddServer() {
@@ -41,7 +126,7 @@ function AddServer() {
   };
   return html`
     <${Modal} title=${mode === 'create' ? 'Criar servidor' : 'Entrar em um servidor'}>
-      <div class="seg glass small-seg">
+      <div class="seg lg small-seg">
         <button class=${mode === 'create' ? 'on' : ''} onClick=${() => setMode('create')}>Criar</button>
         <button class=${mode === 'join' ? 'on' : ''} onClick=${() => setMode('join')}>Tenho um convite</button>
       </div>
@@ -66,7 +151,7 @@ function CreateChannel({ serverId, type: t0 = 'text' }) {
   return html`
     <${Modal} title="Criar canal">
       <form onSubmit=${submit} class="stack">
-        <div class="seg glass small-seg">
+        <div class="seg lg small-seg">
           <button type="button" class=${type === 'text' ? 'on' : ''} onClick=${() => setType('text')}><${Icon} n="hash" s=${16} /> Texto</button>
           <button type="button" class=${type === 'voice' ? 'on' : ''} onClick=${() => setType('voice')}><${Icon} n="volume" s=${16} /> Voz</button>
         </div>
@@ -89,15 +174,13 @@ function RenameChannel({ c, serverId }) {
 
 function Invite({ id }) {
   const sv = useS((s) => s.servers[id]);
-  const code = useS((s) => s.inviteCode);
   if (!sv) return null;
   const copy = (t) => navigator.clipboard?.writeText(t).then(() => toast('Copiado!'));
-  const msg = `Entra no meu servidor "${sv.name}" na Perfumolandia! Convite do servidor: ${sv.invite}` + (code ? ` · Código para criar conta: ${code}` : '');
+  const msg = `Entra no meu servidor "${sv.name}" na Perfumolandia! Código do servidor: ${sv.invite}`;
   return html`
     <${Modal} title=${'Convidar para ' + sv.name}>
       <p class="muted">Mande o código para os amigos. Eles entram em <b>+ → Tenho um convite</b>.</p>
-      <div class="code-box glass"><b>${sv.invite}</b><button class="gbtn sm" onClick=${() => copy(sv.invite)}><${Icon} n="copy" s=${16} /> Copiar</button></div>
-      <p class="muted small">Quem ainda não tem conta precisa do código de cadastro: <code>${code}</code></p>
+      <div class="code-box"><b>${sv.invite}</b><button class="gbtn sm" onClick=${() => copy(sv.invite)}><${Icon} n="copy" s=${14} /> Copiar</button></div>
       <div class="row">
         <button class="gbtn" onClick=${() => copy(msg)}><${Icon} n="copy" s=${16} /> Copiar mensagem pronta</button>
         ${navigator.share ? html`<button class="gbtn" onClick=${() => navigator.share({ text: msg }).catch(() => {})}><${Icon} n="share" s=${16} /> Compartilhar</button>` : null}
@@ -124,7 +207,7 @@ function ServerSettings({ id }) {
           <button class="gbtn primary" disabled=${!name.trim() || name === sv.name} onClick=${() => safe(api.updateServer(id, { name }), 'Salvo.')}>Salvar nome</button>
         </div>
       </div>
-      <${Field} label="Convite atual"><div class="code-box glass"><b>${sv.invite}</b>
+      <${Field} label="Convite atual"><div class="code-box"><b>${sv.invite}</b>
         <button class="gbtn sm" onClick=${() => safe(api.updateServer(id, { resetInvite: true }), 'Novo convite gerado.')}>Gerar novo</button></div><//>
       <div class="field"><span class="field-label">Membros (${sv.members.length})</span>
         <div class="mem-list">
@@ -156,20 +239,14 @@ function Profile({ id }) {
   const me = id === S.uid;
   return html`
     <${Modal} title="Perfil" class="profile-modal">
-      <div class="profile-banner" style=${`--c:${u.color}`}></div>
-      <div class="profile-av"><${Avatar} id=${id} size=${92} status /></div>
-      <h2 class="profile-name">${u.displayName}</h2>
-      <p class="muted">@${u.username} · ${STATUS_LABEL[st]}</p>
-      ${u.customStatus ? html`<p class="custom-status">${u.customStatus}</p>` : null}
-      ${u.bio ? html`<div class="bio"><small class="field-label">Sobre</small><p>${u.bio}</p></div>` : null}
-      ${!me ? html`
-        <div class="row center">
-          ${rel?.status === 'accepted' ? html`
-            <button class="gbtn primary" onClick=${() => { closeModal(); openDM(id); }}><${Icon} n="message" s=${18} /> Mensagem</button>
-            <button class="gbtn" onClick=${async () => { closeModal(); const dm = await openDM(id); callDM(dm.id); }}><${Icon} n="phone" s=${18} /> Ligar</button>`
-            : rel ? html`<span class="muted">Pedido de amizade pendente</span>`
-            : html`<button class="gbtn primary" onClick=${() => run(api.friendRequest(u.username), 'Pedido enviado!')}><${Icon} n="userPlus" s=${18} /> Adicionar amigo</button>`}
-        </div>` : null}
+      <${ProfileCard} u=${u} status=${st}>
+        ${me ? html`<button class="gbtn sm primary" onClick=${() => openModal('settings', { tab: 'account' })}><${Icon} n="edit" s=${14} /> Editar perfil</button>`
+          : rel?.status === 'accepted' ? html`
+            <button class="gbtn sm primary" onClick=${() => { closeModal(); openDM(id); }}><${Icon} n="message" s=${14} /> Mensagem</button>
+            <button class="gbtn sm" onClick=${async () => { closeModal(); const dm = await openDM(id); callDM(dm.id); }}><${Icon} n="phone" s=${14} /> Ligar</button>`
+          : rel ? html`<span class="muted small">Pedido de amizade pendente</span>`
+          : html`<button class="gbtn sm primary" onClick=${() => run(api.friendRequest(u.username), 'Pedido enviado!')}><${Icon} n="userPlus" s=${14} /> Adicionar amigo</button>`}
+      <//>
     <//>`;
 }
 
@@ -177,7 +254,7 @@ function ImageView({ a }) {
   return html`
     <div class="viewer" onClick=${closeModal}>
       <img src=${a.url} alt=${a.name} onClick=${(e) => e.stopPropagation()} />
-      <div class="viewer-bar glass" onClick=${(e) => e.stopPropagation()}>
+      <div class="viewer-bar lg" onClick=${(e) => e.stopPropagation()}>
         <span>${a.name}</span>
         <a class="gbtn sm" href=${a.url} target="_blank" rel="noopener" download=${a.name}><${Icon} n="download" s=${16} /> Baixar</a>
         <button class="gbtn icon-only sm" onClick=${closeModal} aria-label="Fechar"><${Icon} n="x" s=${18} /></button>
@@ -197,12 +274,13 @@ function React({ m }) {
 export function IncomingCall() {
   const inc = useS((s) => s.incoming);
   const u = useS((s) => (inc ? s.users[inc.from] : null));
+  const g = useS((s) => (inc ? s.groups[inc.dmId] : null));
   if (!inc) return null;
   return html`
-    <div class="incoming glass pop" role="alertdialog" aria-label="Chamada recebida">
-      <div class="inc-av"><${Avatar} id=${inc.from} size=${84} /></div>
-      <b>${u?.displayName}</b>
-      <small>está te ligando…</small>
+    <div class="incoming lg pop" role="alertdialog" aria-label="Chamada recebida">
+      <div class="inc-av">${g ? html`<${GroupAvatar} g=${g} size=${76} />` : html`<${Avatar} id=${inc.from} size=${76} />`}</div>
+      <b>${g ? groupName(g) : u?.displayName}</b>
+      <small>${g ? `${u?.displayName} está chamando o grupo…` : 'está te ligando…'}</small>
       <div class="row center">
         <button class="gbtn icon-only ctl danger" aria-label="Recusar" onClick=${declineCall}><${Icon} n="hangup" /></button>
         <button class="gbtn icon-only ctl ok" aria-label="Atender" onClick=${acceptCall}><${Icon} n="phone" /></button>
@@ -222,7 +300,7 @@ export function InstallBanner() {
   if (!isMobile) return null;
   const dismiss = () => { setHidden(true); try { localStorage.setItem('rs.installHidden', '1'); } catch {} };
   return html`
-    <div class="install glass pop">
+    <div class="install lg pop">
       <${Icon} n="download" s=${20} />
       <span>Instale a Perfumolandia na tela de início para receber chamadas e usar em tela cheia.</span>
       <button class="gbtn sm primary" onClick=${() => (deferredPrompt ? deferredPrompt.prompt() : import('../actions.js').then((a) => a.openModal('install')))}>Instalar</button>

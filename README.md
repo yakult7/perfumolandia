@@ -21,16 +21,20 @@ Tudo sai pronto na página de versões do GitHub (compila sozinho a cada atualiz
 | iPhone | link acima no **Safari** | Compartilhar → **Adicionar à Tela de Início**. |
 | iPhone (app nativo) | `Perfumolandia.ipa` | Instale com o [Sideloadly](https://sideloadly.io) pelo PC usando seu Apple ID (renovar a cada 7 dias). |
 
-**Código de convite para criar conta:** fica em Configurações → *Sobre e convites* (só quem já tem conta vê).
+Qualquer pessoa com o app cria a conta direto (usuário + senha) e adiciona os amigos pelo usuário.
 
 ## O que tem
 
-- Contas com usuário e senha, protegidas por código de convite
+- Contas com usuário e senha (com botão de ver a senha)
 - Amigos: pedir, aceitar, recusar, remover, ver quem está online/ausente/não perturbe/invisível
 - Servidores com convite, canais de texto e de voz, membros, dono pode remover gente
+- Grupos (conversa e chamada com várias pessoas, sem precisar de servidor)
+- Perfil completo: foto e banner (aceita GIF), cores da capa em degradê, pronomes, status e bio
+- Tema claro, escuro (preto de verdade) ou automático, cor de destaque livre, vidro transparente ou fosco
 - Mensagens com **negrito**, *itálico*, `código`, ||spoiler||, links, menções `@usuario` e `@todos`,
   respostas, edição, apagar, reações com emoji, fotos/vídeos/arquivos (até 50 MB), "digitando…"
-- Chamadas em canal de voz e ligação direta (toca no outro aparelho, atender/recusar)
+- Chamadas em canal de voz, ligação direta e em grupo (toca no outro aparelho, atender/recusar)
+- Registro no chat: chamada iniciada, perdida, recusada e quanto tempo durou
 - Mudo, ensurdecer, câmera (frontal/traseira no celular), quem está falando fica destacado
 - Volume individual por pessoa e por transmissão, tela cheia, janela flutuante (PiP)
 - Aperte-para-falar com tecla configurável — no app do Windows funciona **com o jogo em foco**

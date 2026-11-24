@@ -4,9 +4,9 @@ import { Icon } from '../icons.js';
 import * as api from '../api.js';
 import * as rtc from '../rtc.js';
 import { md, isBigEmoji } from '../markdown.js';
-import { sendMessage, loadMessages, markRead, openMenu, openModal, back, run, safe, toast, dmPartner, callDM, statusOf } from '../actions.js';
-import { Avatar, GBtn, Spinner, Empty, STATUS_LABEL } from './common.js';
-import { CallStage } from './call.js';
+import { sendMessage, loadMessages, markRead, openMenu, openModal, back, run, safe, toast, dmPartner, callDM, statusOf, groupName } from '../actions.js';
+import { Avatar, GBtn, Spinner, Empty, STATUS_LABEL, GroupAvatar } from './common.js';
+import { CallDock } from './call.js';
 
 export const QUICK = ['👍', '❤️', '😂', '🔥', '😮', '😢'];
 export const EMOJIS = {
@@ -18,10 +18,12 @@ export const EMOJIS = {
 export function Chat({ cid, mobile }) {
   const box = useS((s) => s.messages[cid]);
   const dm = useS((s) => s.dms[cid]);
-  const sv = useS((s) => (dm ? null : Object.values(s.servers).find((x) => x.channels.some((c) => c.id === cid))));
+  const group = useS((s) => s.groups[cid]);
+  const sv = useS((s) => (dm || group ? null : Object.values(s.servers).find((x) => x.channels.some((c) => c.id === cid))));
   const ch = sv?.channels.find((c) => c.id === cid);
   const callHere = useS((s) => s.call?.roomId === cid);
   const voiceHere = useS((s) => (s.voice[cid] || []).length);
+  const expandedCall = useS((s) => !!s.ui.callExpanded);
   const [reply, setReply] = useState(null);
   const [editing, setEditing] = useState(null);
 
@@ -33,36 +35,43 @@ export function Chat({ cid, mobile }) {
   }, [cid]);
 
   const other = dm ? dmPartner(dm) : null;
-  const title = dm ? other.displayName : ch?.name;
+  const title = dm ? other.displayName : group ? groupName(group) : ch?.name;
+  const direct = !!(dm || group);
   const startCall = async (video) => {
-    if (dm) { await callDM(cid); } else return;
+    if (!direct) return;
+    await callDM(cid);
     if (video && !rtc.hasCam()) rtc.toggleCamera();
     setUI({ callOpen: true });
   };
+  const groupMenu = (e) => openMenu(e, [
+    { label: 'Adicionar amigos', icon: html`<${Icon} n="userPlus" s=${16} />`, onClick: () => openModal('addToGroup', { id: cid }) },
+    { label: 'Ajustes do grupo', icon: html`<${Icon} n="settings" s=${16} />`, onClick: () => openModal('groupSettings', { id: cid }) },
+  ], { anchor: true });
 
   return html`
-    <div class="chat">
-      <header class="top glass chat-top">
-        ${mobile ? html`<button class="gbtn icon-only sm" aria-label="Voltar" onClick=${() => history.back()}><${Icon} n="back" s=${20} /></button>` : null}
-        <div class="top-title" onClick=${() => dm && openModal('profile', { id: other.id })}>
-          ${dm ? html`<${Avatar} id=${other.id} size=${30} status />` : html`<${Icon} n="hash" s=${20} />`}
+    <div class=${cx('chat', callHere && expandedCall && !mobile && 'call-full')}>
+      <header class="top lg chat-top">
+        ${mobile ? html`<button class="gbtn icon-only sm plain" aria-label="Voltar" onClick=${() => history.back()}><${Icon} n="back" s=${19} /></button>` : null}
+        <div class=${cx('top-title', direct && 'click')} onClick=${() => (dm ? openModal('profile', { id: other.id }) : group && openModal('groupSettings', { id: cid }))}>
+          ${dm ? html`<${Avatar} id=${other.id} size=${26} status />` : group ? html`<${GroupAvatar} g=${group} size=${26} />` : html`<${Icon} n="hash" s=${17} />`}
           <b>${title}</b>
-          ${dm ? html`<${DmStatus} id=${other.id} />` : null}
+          ${dm ? html`<${DmStatus} id=${other.id} />` : group ? html`<small class="muted">${group.members.length} membros</small>` : null}
         </div>
         <div class="top-actions">
-          ${dm ? html`
-            ${voiceHere && !callHere ? html`<button class="gbtn sm ok" onClick=${() => startCall(false)}><${Icon} n="phone" s=${16} /> Entrar</button>` : null}
-            <${GBtn} icon="phone" title="Ligar" class="icon-only sm" onClick=${() => startCall(false)} size=${18} />
-            <${GBtn} icon="video" title="Chamada de vídeo" class="icon-only sm" onClick=${() => startCall(true)} size=${18} />` : null}
-          ${sv && !mobile ? html`<${GBtn} icon="users" title="Membros" class="icon-only sm" onClick=${() => setUI({ showMembers: !S.ui.showMembers })} size=${18} />` : null}
-          ${sv ? html`<${GBtn} icon="userPlus" title="Convidar" class="icon-only sm" onClick=${() => openModal('invite', { id: sv.id })} size=${18} />` : null}
+          ${direct ? html`
+            ${voiceHere && !callHere ? html`<button class="gbtn sm ok" onClick=${() => startCall(false)}><${Icon} n="phone" s=${14} /> Entrar</button>` : null}
+            <${GBtn} icon="phone" title=${group ? 'Ligar para o grupo' : 'Ligar'} class="icon-only sm" onClick=${() => startCall(false)} size=${15} />
+            <${GBtn} icon="video" title="Chamada de vídeo" class="icon-only sm" onClick=${() => startCall(true)} size=${15} />` : null}
+          ${group ? html`<${GBtn} icon="more" title="Grupo" class="icon-only sm" onClick=${groupMenu} size=${15} />` : null}
+          ${sv && !mobile ? html`<${GBtn} icon="users" title="Membros" class="icon-only sm" onClick=${() => setUI({ showMembers: !S.ui.showMembers })} size=${15} />` : null}
+          ${sv ? html`<${GBtn} icon="userPlus" title="Convidar" class="icon-only sm" onClick=${() => openModal('invite', { id: sv.id })} size=${15} />` : null}
         </div>
       </header>
-      ${callHere && !mobile ? html`<div class="dm-stage"><${CallStage} compact /></div>` : null}
-      <${MessageList} cid=${cid} box=${box} title=${title} dm=${!!dm} onReply=${setReply} editing=${editing} setEditing=${setEditing} />
+      ${callHere && !mobile ? html`<${CallDock} />` : null}
+      <${MessageList} cid=${cid} box=${box} title=${title} dm=${direct} onReply=${setReply} editing=${editing} setEditing=${setEditing} />
       <${TypingLine} cid=${cid} />
-      <${Composer} cid=${cid} placeholder=${dm ? `Conversar com @${other.username}` : `Conversar em #${ch?.name || ''}`}
-        reply=${reply} clearReply=${() => setReply(null)} members=${dm ? dm.members : sv?.members || []}
+      <${Composer} cid=${cid} placeholder=${dm ? `Conversar com @${other.username}` : group ? `Conversar em ${title}` : `Conversar em #${ch?.name || ''}`}
+        reply=${reply} clearReply=${() => setReply(null)} members=${dm ? dm.members : group ? group.members : sv?.members || []}
         onEditLast=${() => { const mine = [...(box?.list || [])].reverse().find((m) => m.authorId === S.uid && !m.pending); if (mine) setEditing(mine.id); }} />
     </div>`;
 }
@@ -108,7 +117,7 @@ function MessageList({ cid, box, title, dm, onReply, editing, setEditing }) {
     if (!prev || new Date(prev.createdAt).toDateString() !== d.toDateString()) {
       rows.push(html`<div class="day" key=${'d' + m.id}><span>${d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>`);
     }
-    const grouped = prev && prev.authorId === m.authorId && m.createdAt - prev.createdAt < 7 * 60000 && !m.replyTo && new Date(prev.createdAt).toDateString() === d.toDateString();
+    const grouped = prev && prev.type !== 'call' && m.type !== 'call' && prev.authorId === m.authorId && m.createdAt - prev.createdAt < 7 * 60000 && !m.replyTo && new Date(prev.createdAt).toDateString() === d.toDateString();
     rows.push(html`<${Message} key=${m.id} m=${m} grouped=${grouped} names=${names} onReply=${onReply} editing=${editing === m.id} setEditing=${setEditing} />`);
     prev = m;
   }
@@ -119,7 +128,7 @@ function MessageList({ cid, box, title, dm, onReply, editing, setEditing }) {
         ${box?.loading && list.length ? html`<div class="loading-more"><${Spinner} /></div>` : null}
         ${box && !box.hasMore ? html`
           <div class="chat-start">
-            <div class="chat-start-ic"><${Icon} n=${dm ? 'message' : 'hash'} s=${34} /></div>
+            <div class="chat-start-ic"><${Icon} n=${dm ? 'message' : 'hash'} s=${28} /></div>
             <h2>${dm ? title : 'Bem-vindo a #' + title}</h2>
             <p class="muted">${dm ? 'Este é o começo da conversa de vocês.' : 'Este é o começo do canal.'}</p>
           </div>` : null}
@@ -128,7 +137,45 @@ function MessageList({ cid, box, title, dm, onReply, editing, setEditing }) {
     </div>`;
 }
 
+const dur = (ms) => {
+  const s = Math.max(1, Math.round(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+};
+
+/** linha de registro de chamada (iniciada, perdida, recusada, duração) */
+function CallLog({ m }) {
+  const caller = useS((s) => s.users[m.authorId]);
+  const live = useS((s) => (s.voice[m.channelId] || []).length > 0);
+  const inIt = useS((s) => s.call?.roomId === m.channelId);
+  const meta = m.meta || {};
+  const st = meta.status || 'ringing';
+  const mine = m.authorId === S.uid;
+  const name = mine ? 'Você' : caller?.displayName || 'Alguém';
+  let icon = 'phone', tone = 'ok', text;
+  if (st === 'missed') { tone = 'bad'; text = mine ? 'Ninguém atendeu sua chamada' : `Chamada perdida de ${name}`; }
+  else if (st === 'declined') { tone = 'bad'; text = mine ? `${S.users[meta.declinedBy]?.displayName || 'A pessoa'} recusou sua chamada` : 'Você recusou a chamada'; }
+  else if (st === 'ended') text = `${name} ${mine ? 'iniciou' : 'iniciou'} uma chamada que durou ${dur((meta.endedAt || 0) - (meta.answeredAt || meta.startedAt || m.createdAt))}`;
+  else if (st === 'answered') text = `${name} iniciou uma chamada · em andamento`;
+  else text = mine ? 'Você está chamando…' : `${name} está ligando…`;
+  if (tone === 'bad') icon = 'hangup';
+  const canJoin = (st === 'ringing' || st === 'answered') && live && !inIt;
+  return html`
+    <div class=${cx('call-log', tone)}>
+      <span class="call-log-ic"><${Icon} n=${icon} s=${14} /></span>
+      <span class="call-log-text">${text}</span>
+      <time>${timeAgo(m.createdAt)}</time>
+      ${canJoin ? html`<button class="gbtn sm ok" onClick=${() => { rtc.join(m.channelId); setUI({ callOpen: true }); }}><${Icon} n="phone" s=${13} /> Entrar</button>` : null}
+    </div>`;
+}
+
 function Message({ m, grouped, names, onReply, editing, setEditing }) {
+  if (m.type === 'call') return html`<${CallLog} m=${m} />`;
+  return html`<${TextMessage} m=${m} grouped=${grouped} names=${names} onReply=${onReply} editing=${editing} setEditing=${setEditing} />`;
+}
+
+function TextMessage({ m, grouped, names, onReply, editing, setEditing }) {
   const author = useS((s) => s.users[m.authorId]);
   const replied = useS((s) => (m.replyTo ? s.messages[m.channelId]?.list.find((x) => x.id === m.replyTo) : null));
   const repliedAuthor = useS((s) => (replied ? s.users[replied.authorId] : null));
@@ -139,11 +186,11 @@ function Message({ m, grouped, names, onReply, editing, setEditing }) {
   const press = useRef(null);
 
   const menu = (e) => openMenu(e, [
-    { label: 'Reagir…', icon: html`<${Icon} n="smile" s=${18} />`, onClick: () => openModal('react', { m }) },
-    { label: 'Responder', icon: html`<${Icon} n="reply" s=${18} />`, onClick: () => onReply(m) },
-    { label: 'Copiar texto', icon: html`<${Icon} n="copy" s=${18} />`, onClick: () => navigator.clipboard?.writeText(m.content).then(() => toast('Copiado.')) },
-    ...(mine ? [{ label: 'Editar', icon: html`<${Icon} n="edit" s=${18} />`, onClick: () => setEditing(m.id) }] : []),
-    ...(canDelete ? [{ sep: true }, { label: 'Apagar mensagem', danger: true, icon: html`<${Icon} n="trash" s=${18} />`, onClick: () => safe(api.deleteMessage(m.id)) }] : []),
+    { label: 'Reagir…', icon: html`<${Icon} n="smile" s=${16} />`, onClick: () => openModal('react', { m }) },
+    { label: 'Responder', icon: html`<${Icon} n="reply" s=${16} />`, onClick: () => onReply(m) },
+    { label: 'Copiar texto', icon: html`<${Icon} n="copy" s=${16} />`, onClick: () => navigator.clipboard?.writeText(m.content).then(() => toast('Copiado.')) },
+    ...(mine ? [{ label: 'Editar', icon: html`<${Icon} n="edit" s=${16} />`, onClick: () => setEditing(m.id) }] : []),
+    ...(canDelete ? [{ sep: true }, { label: 'Apagar mensagem', danger: true, icon: html`<${Icon} n="trash" s=${16} />`, onClick: () => safe(api.deleteMessage(m.id)) }] : []),
   ]);
 
   // toque longo no celular abre o menu
@@ -162,7 +209,7 @@ function Message({ m, grouped, names, onReply, editing, setEditing }) {
         </div>` : null}
       <div class="msg-row">
         ${grouped ? html`<span class="msg-time-side">${new Date(m.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>`
-          : html`<button class="msg-av" onClick=${() => openModal('profile', { id: m.authorId })}><${Avatar} id=${m.authorId} size=${40} /></button>`}
+          : html`<button class="msg-av" onClick=${() => openModal('profile', { id: m.authorId })}><${Avatar} id=${m.authorId} size=${36} /></button>`}
         <div class="msg-body">
           ${grouped ? null : html`
             <div class="msg-head">
@@ -184,12 +231,12 @@ function Message({ m, grouped, names, onReply, editing, setEditing }) {
         </div>
       </div>
       ${!m.pending && !editing ? html`
-        <div class="msg-tools glass">
+        <div class="msg-tools lg">
           ${QUICK.slice(0, 3).map((q) => html`<button key=${q} onClick=${() => safe(api.toggleReaction(m.id, q))}>${q}</button>`)}
-          <button title="Reagir" onClick=${() => openModal('react', { m })}><${Icon} n="smile" s=${17} /></button>
-          <button title="Responder" onClick=${() => onReply(m)}><${Icon} n="reply" s=${17} /></button>
-          ${mine ? html`<button title="Editar" onClick=${() => setEditing(m.id)}><${Icon} n="edit" s=${17} /></button>` : null}
-          <button title="Mais" onClick=${menu}><${Icon} n="more" s=${17} /></button>
+          <button title="Reagir" onClick=${() => openModal('react', { m })}><${Icon} n="smile" s=${15} /></button>
+          <button title="Responder" onClick=${() => onReply(m)}><${Icon} n="reply" s=${15} /></button>
+          ${mine ? html`<button title="Editar" onClick=${() => setEditing(m.id)}><${Icon} n="edit" s=${15} /></button>` : null}
+          <button title="Mais" onClick=${menu}><${Icon} n="more" s=${15} /></button>
         </div>` : null}
     </div>`;
 }
@@ -306,7 +353,7 @@ function Composer({ cid, placeholder, reply, clearReply, members, onEditLast }) 
       onDragOver=${(e) => { e.preventDefault(); }}
       onDrop=${(e) => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}>
       ${mentionList.length ? html`
-        <div class="mention-pop glass pop">
+        <div class="mention-pop lg pop">
           ${mentionList.map((u, i) => html`
             <button key=${u.username} class=${cx('mention-item', i === mention.i && 'on')} onPointerDown=${(e) => { e.preventDefault(); applyMention(u); }}>
               ${u.id !== 'all' ? html`<${Avatar} id=${u.id} size=${26} />` : html`<${Icon} n="users" s=${20} />`}<b>${u.displayName}</b><small>@${u.username}</small>
@@ -314,7 +361,7 @@ function Composer({ cid, placeholder, reply, clearReply, members, onEditLast }) 
         </div>` : null}
       ${emoji ? html`<${EmojiPicker} onPick=${(em) => { const t = ta.current; const p = t.selectionStart ?? text.length; const v = text.slice(0, p) + em + text.slice(p); setText(v); t.value = v; t.focus(); }} onClose=${() => setEmoji(false)} />` : null}
       ${reply ? html`
-        <div class="reply-bar glass">
+        <div class="reply-bar lg">
           <span>Respondendo a <b>${S.users[reply.authorId]?.displayName}</b></span>
           <button class="mini-btn" onClick=${clearReply} aria-label="Cancelar resposta"><${Icon} n="x" s=${16} /></button>
         </div>` : null}
@@ -328,16 +375,16 @@ function Composer({ cid, placeholder, reply, clearReply, members, onEditLast }) 
             </div>`)}
           ${progress != null ? html`<div class="upload-bar"><i style=${`width:${Math.round(progress * 100)}%`}></i></div>` : null}
         </div>` : null}
-      <div class="composer glass">
+      <div class="composer lg">
         <label class="gbtn icon-only sm" title="Enviar arquivo">
-          <${Icon} n="plus" s=${20} />
+          <${Icon} n="plus" s=${17} />
           <input type="file" multiple hidden onChange=${(e) => { addFiles(e.target.files); e.target.value = ''; }} />
         </label>
         <textarea ref=${ta} rows="1" value=${text} placeholder=${placeholder} onInput=${onInput} onKeyDown=${onKey}
           onPaste=${(e) => { if (e.clipboardData.files.length) { e.preventDefault(); addFiles(e.clipboardData.files); } }}
           enterkeyhint="send"></textarea>
-        <button class=${cx('gbtn icon-only sm', emoji && 'on')} title="Emoji" onClick=${() => setEmoji(!emoji)}><${Icon} n="smile" s=${20} /></button>
-        <button class="gbtn icon-only sm primary send" title="Enviar" disabled=${(!text.trim() && !files.length) || progress != null} onClick=${send}><${Icon} n="send" s=${18} /></button>
+        <button class=${cx('gbtn icon-only sm', emoji && 'on')} title="Emoji" onClick=${() => setEmoji(!emoji)}><${Icon} n="smile" s=${17} /></button>
+        <button class="gbtn icon-only sm primary send" title="Enviar" disabled=${(!text.trim() && !files.length) || progress != null} onClick=${send}><${Icon} n="send" s=${15} /></button>
       </div>
     </div>`;
 }
@@ -351,7 +398,7 @@ export function EmojiPicker({ onPick, onClose, inline }) {
     return () => removeEventListener('pointerdown', f, true);
   }, []);
   return html`
-    <div ref=${ref} class=${cx('emoji-pop glass', !inline && 'pop')}>
+    <div ref=${ref} class=${cx('emoji-pop lg', inline ? 'inline' : 'pop')}>
       ${Object.entries(EMOJIS).map(([g, list]) => html`
         <div class="emoji-group" key=${g}><small>${g}</small>
           <div class="emoji-grid">${list.split(' ').map((e) => html`<button key=${e} onClick=${() => onPick(e)}>${e}</button>`)}</div>

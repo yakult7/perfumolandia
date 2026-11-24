@@ -11,14 +11,16 @@ export const DEFAULT_SETTINGS = {
   inputMode: 'voice', pttKey: 'KeyV', pttLabel: 'V',
   camQuality: '720p',
   screenQuality: '4k60', screenPriority: 'resolution', screenAudio: true, codec: 'auto',
-  perfMode: false, accent: 'violet', sounds: true, showStats: false,
+  perfMode: false, sounds: true, showStats: false,
+  theme: 'system', accent: '#0a84ff', wallpaper: 'aurora', wallpaperColors: ['#3b5bff', '#a04dff', '#00c2c7'], wallpaperImage: null, glassStyle: 'clear',
+  callHeight: 340,
   userVolumes: {}, streamVolumes: {},
 };
 
 export const S = {
   booting: true, authed: false, needsProfile: false, uid: null, inviteCode: null,
   me: null, ready: false, connected: false,
-  users: {}, online: {}, relations: {}, servers: {}, dms: {}, messages: {},
+  users: {}, online: {}, relations: {}, servers: {}, dms: {}, groups: {}, messages: {},
   lastIds: {}, readIds: load('readIds', {}), voice: {}, typing: {}, speaking: {},
   view: { serverId: null, channelId: null, homeTab: 'online' },
   lastChannel: load('lastChannel', {}),

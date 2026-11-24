@@ -9,7 +9,7 @@ import {
 } from '../actions.js';
 import { Avatar, GBtn, Toasts, STATUS_LABEL, useNow, fmtDur, initials } from './common.js';
 import { Chat } from './chat.js';
-import { CallStage, MiniCall } from './call.js';
+import { CallStage, MiniCall, Theater } from './call.js';
 import { Friends, DMList } from './home.js';
 import { Modals, IncomingCall, InstallBanner } from './modals.js';
 import { MePage } from './settings.js';
@@ -21,6 +21,7 @@ export function Shell() {
   const audioBlocked = useS((s) => s.ui.audioBlocked);
   return html`
     ${mobile ? html`<${MobileShell} />` : html`<${DesktopShell} />`}
+    <${Theater} />
     <${Modals} />
     <${IncomingCall} />
     ${menu ? html`<${GlassMenu} key=${menu.key} menu=${menu} onClose=${closeMenu} />` : null}
@@ -35,20 +36,22 @@ function DesktopShell() {
   const stage = useS((s) => s.ui.stage && !!s.call);
   const showMembers = useS((s) => s.ui.showMembers);
   const isServerText = useS((s) => !!s.view.serverId && !!s.view.channelId);
+  const groupId = useS((s) => (s.groups[s.view.channelId] ? s.view.channelId : null));
   const connected = useS((s) => s.connected);
   return html`
     <div class="shell desk">
-      ${!connected ? html`<div class="offline-pill glass">Reconectando…</div>` : null}
+      ${!connected ? html`<div class="offline-pill lg">Reconectando…</div>` : null}
       <${ServerRail} />
-      <aside class="side panel">
+      <aside class="side panel material">
         ${view.serverId ? html`<${ServerSidebar} id=${view.serverId} />` : html`<${HomeSidebar} />`}
         <${VoiceDock} />
         <${UserBar} />
       </aside>
-      <main class="main panel">
+      <main class="main panel surface">
         ${stage ? html`<${CallStage} />` : view.channelId ? html`<${Chat} key=${view.channelId} cid=${view.channelId} />` : html`<${Friends} />`}
       </main>
-      ${!stage && isServerText && showMembers ? html`<${Members} id=${view.serverId} />` : null}
+      ${!stage && showMembers && isServerText ? html`<${Members} ids=${S.servers[view.serverId]?.members || []} ownerId=${S.servers[view.serverId]?.ownerId} />` : null}
+      ${!stage && showMembers && groupId ? html`<${Members} ids=${S.groups[groupId].members} ownerId=${S.groups[groupId].ownerId} />` : null}
     </div>`;
 }
 
@@ -56,7 +59,7 @@ export function ServerRail({ vertical = true, browseOnly = false }) {
   const servers = useS((s) => s.servers);
   const sid = useS((s) => s.view.serverId);
   const unread = useS((s) => Object.fromEntries(Object.values(s.servers).map((sv) => [sv.id, sv.channels.some((c) => c.type === 'text' && isUnread(s, c.id))])));
-  const dmUnread = useS((s) => Object.keys(s.dms).filter((id) => isUnread(s, id)).length);
+  const dmUnread = useS((s) => [...Object.keys(s.dms), ...Object.keys(s.groups)].filter((id) => isUnread(s, id)).length);
   const pending = useS((s) => Object.values(s.relations).filter((r) => r.status === 'pending' && r.to === s.uid).length);
   const voiceIn = useS((s) => (s.call ? serverOfRoom(s.call.roomId)?.id : null));
   const list = Object.values(servers).sort((a, b) => a.name.localeCompare(b.name));
@@ -77,7 +80,7 @@ export function ServerRail({ vertical = true, browseOnly = false }) {
         onChange=${(k) => (browseOnly
           ? set((s) => { s.view = { ...s.view, serverId: k === 'home' ? null : k }; })
           : k === 'home' ? goHome() : go(k))} class="rail-bar" itemClass="rail-item" />
-      <button class="gbtn icon-only rail-add" title="Criar ou entrar em servidor" onClick=${() => openModal('addServer')}><${Icon} n="plus" s=${22} /></button>
+      <button class="gbtn icon-only rail-add" title="Criar ou entrar em servidor" onClick=${() => openModal('addServer')}><${Icon} n="plus" s=${19} /></button>
     </nav>`;
 }
 
@@ -99,7 +102,7 @@ function ServerSidebar({ id }) {
   const sv = useS((s) => s.servers[id]);
   if (!sv) return null;
   return html`
-    <header class="side-head glass" onClick=${(e) => serverMenu(e, sv)} role="button" tabindex="0">
+    <header class="side-head lg" onClick=${(e) => serverMenu(e, sv)} role="button" tabindex="0">
       <h2>${sv.name}</h2><${Icon} n="down" s=${18} />
     </header>
     <div class="side-scroll">
@@ -172,8 +175,11 @@ function VoiceUser({ p }) {
 
 function HomeSidebar() {
   return html`
-    <header class="side-head glass static"><h2>Conversas</h2>
-      <button class="mini-btn" title="Adicionar amigo" onClick=${() => goHome('add')}><${Icon} n="userPlus" s=${18} /></button>
+    <header class="side-head lg static"><h2>Conversas</h2>
+      <span class="side-head-btns">
+        <button class="mini-btn" title="Novo grupo" onClick=${() => openModal('createGroup')}><${Icon} n="group" s=${16} /></button>
+        <button class="mini-btn" title="Adicionar amigo" onClick=${() => goHome('add')}><${Icon} n="userPlus" s=${16} /></button>
+      </span>
     </header>
     <div class="side-scroll"><${DMList} /></div>`;
 }
@@ -184,16 +190,16 @@ export function UserBar() {
   const call = useS((s) => (s.call ? { muted: s.call.muted, deafened: s.call.deafened } : null));
   if (!me) return null;
   return html`
-    <div class="userbar glass">
+    <div class="userbar lg">
       <button class="me" onClick=${(e) => statusMenu(e)}>
-        <${Avatar} id=${me.id} size=${36} status ring />
+        <${Avatar} id=${me.id} size=${32} status ring />
         <span class="me-names"><b>${me.displayName}</b><small>${me.customStatus || STATUS_LABEL[st === 'invisible' ? 'invisible' : st] || '@' + me.username}</small></span>
       </button>
       <${GBtn} icon=${call?.muted ? 'micOff' : 'mic'} title=${call ? (call.muted ? 'Ativar microfone' : 'Silenciar') : 'Microfone (entre numa chamada)'}
-        class=${cx('icon-only sm', call?.muted && 'off')} onClick=${rtc.toggleMute} disabled=${!call} size=${18} />
+        class=${cx('icon-only sm', call?.muted && 'off')} onClick=${rtc.toggleMute} disabled=${!call} size=${15} />
       <${GBtn} icon=${call?.deafened ? 'headphonesOff' : 'headphones'} title=${call?.deafened ? 'Ativar áudio' : 'Ensurdecer'}
-        class=${cx('icon-only sm', call?.deafened && 'off')} onClick=${rtc.toggleDeafen} disabled=${!call} size=${18} />
-      <${GBtn} icon="settings" title="Configurações" class="icon-only sm" onClick=${() => openModal('settings')} size=${18} />
+        class=${cx('icon-only sm', call?.deafened && 'off')} onClick=${rtc.toggleDeafen} disabled=${!call} size=${15} />
+      <${GBtn} icon="settings" title="Configurações" class="icon-only sm" onClick=${() => openModal('settings')} size=${15} />
     </div>`;
 }
 
@@ -207,8 +213,8 @@ export function statusMenu(e) {
     { header: S.me.displayName + ' · @' + S.me.username },
     item('online'), item('idle'), item('dnd'), item('invisible'),
     { sep: true },
-    { label: 'Editar perfil', icon: html`<${Icon} n="user" s=${18} />`, onClick: () => openModal('settings', { tab: 'account' }) },
-    { label: 'Copiar usuário', icon: html`<${Icon} n="copy" s=${18} />`, onClick: () => navigator.clipboard?.writeText(S.me.username).then(() => toast('Usuário copiado.')) },
+    { label: 'Editar perfil', icon: html`<${Icon} n="user" s=${16} />`, onClick: () => openModal('settings', { tab: 'account' }) },
+    { label: 'Copiar usuário', icon: html`<${Icon} n="copy" s=${16} />`, onClick: () => navigator.clipboard?.writeText(S.me.username).then(() => toast('Usuário copiado.')) },
   ], { anchor: true });
 }
 
@@ -220,32 +226,30 @@ function VoiceDock() {
   if (!call) return null;
   const sv = serverOfRoom(call.roomId);
   return html`
-    <div class="voicedock glass">
+    <div class="voicedock lg">
       <button class="vd-info" onClick=${() => { if (sv) go(sv.id); else go(null, call.roomId); setUI({ stage: !!sv, callOpen: true }); }}>
-        <b class=${call.connecting ? 'connecting' : 'ok'}><${Icon} n="signal" s=${15} /> ${call.connecting ? 'Conectando…' : 'Voz conectada'}</b>
+        <b class=${call.connecting ? 'connecting' : 'ok'}><${Icon} n="signal" s=${13} /> ${call.connecting ? 'Conectando…' : 'Voz conectada'}</b>
         <small>${roomName(call.roomId)}${sv ? ' / ' + sv.name : ''} · ${fmtDur(Date.now() - call.joinedAt)}</small>
       </button>
       <div class="vd-btns">
-        <${GBtn} icon=${cam ? 'video' : 'videoOff'} title="Câmera" class=${cx('icon-only sm', cam && 'on')} onClick=${rtc.toggleCamera} size=${18} />
-        <${GBtn} icon="screen" title="Transmitir tela" class=${cx('icon-only sm', share && 'on')} onClick=${() => (share ? rtc.stopScreen() : openModal('screenShare'))} size=${18} />
-        <${GBtn} icon="hangup" title="Desconectar" class="icon-only sm danger" onClick=${() => rtc.leave()} size=${18} />
+        <${GBtn} icon=${cam ? 'video' : 'videoOff'} title="Câmera" class=${cx('icon-only sm', cam && 'on')} onClick=${rtc.toggleCamera} size=${15} />
+        <${GBtn} icon="screen" title="Transmitir tela" class=${cx('icon-only sm', share && 'on')} onClick=${() => (share ? rtc.stopScreen() : openModal('screenShare'))} size=${15} />
+        <${GBtn} icon="hangup" title="Desconectar" class="icon-only sm danger" onClick=${() => rtc.leave()} size=${15} />
       </div>
     </div>`;
 }
 
-function Members({ id }) {
-  const sv = useS((s) => s.servers[id]);
-  const rows = useS((s) => (sv?.members || []).map((uid) => ({ uid, st: statusOf(s, uid), name: s.users[uid]?.displayName || '' })));
-  if (!sv) return null;
+function Members({ ids, ownerId }) {
+  const rows = useS((s) => ids.map((uid) => ({ uid, st: statusOf(s, uid), name: s.users[uid]?.displayName || '' })));
   const on = rows.filter((r) => r.st !== 'offline').sort((a, b) => a.name.localeCompare(b.name));
   const off = rows.filter((r) => r.st === 'offline').sort((a, b) => a.name.localeCompare(b.name));
   const Row = (r) => html`
     <button key=${r.uid} class=${cx('member', r.st === 'offline' && 'dim')} onClick=${(e) => openModal('profile', { id: r.uid })}>
-      <${Avatar} id=${r.uid} size=${34} status />
-      <span>${r.name}${sv.ownerId === r.uid ? html` <${Icon} n="crown" s=${13} class="crown" />` : null}</span>
+      <${Avatar} id=${r.uid} size=${30} status />
+      <span>${r.name}${ownerId === r.uid ? html` <${Icon} n="crown" s=${13} class="crown" />` : null}</span>
     </button>`;
   return html`
-    <aside class="members panel">
+    <aside class="members panel material">
       <div class="side-scroll">
         <div class="mem-head">Online — ${on.length}</div>${on.map(Row)}
         ${off.length ? html`<div class="mem-head">Offline — ${off.length}</div>${off.map(Row)}` : null}
@@ -260,7 +264,7 @@ function MobileShell() {
   const view = useS((s) => s.view);
   const callOpen = useS((s) => !!s.call && s.ui.callOpen);
   const hasCall = useS((s) => !!s.call);
-  const dmUnread = useS((s) => Object.keys(s.dms).filter((id) => isUnread(s, id)).length);
+  const dmUnread = useS((s) => [...Object.keys(s.dms), ...Object.keys(s.groups)].filter((id) => isUnread(s, id)).length);
   const pending = useS((s) => Object.values(s.relations).filter((r) => r.status === 'pending' && r.to === s.uid).length);
   const connected = useS((s) => s.connected);
   const inChat = pane === 'chat' && view.channelId;
@@ -274,17 +278,17 @@ function MobileShell() {
   useEffect(() => { if (inChat || callOpen) history.pushState({ p: 1 }, ''); }, [inChat, callOpen]);
 
   const tabs = [
-    { key: 'home', render: (a) => html`<${Icon} n="home" s=${22} /><small>Servidores</small>` },
-    { key: 'dms', render: () => html`<${Icon} n="message" s=${22} /><small>Conversas</small>`, badge: dmUnread || null },
-    { key: 'friends', render: () => html`<${Icon} n="users" s=${22} /><small>Amigos</small>`, badge: pending || null },
+    { key: 'home', render: (a) => html`<${Icon} n="home" s=${21} /><small>Servidores</small>` },
+    { key: 'dms', render: () => html`<${Icon} n="message" s=${21} /><small>Conversas</small>`, badge: dmUnread || null },
+    { key: 'friends', render: () => html`<${Icon} n="users" s=${21} /><small>Amigos</small>`, badge: pending || null },
     { key: 'me', render: () => html`<${Avatar} id=${S.uid} size=${24} status /><small>Você</small>` },
   ];
   return html`
     <div class=${cx('shell mob', inChat && 'in-chat')}>
-      ${!connected ? html`<div class="offline-pill glass">Reconectando…</div>` : null}
+      ${!connected ? html`<div class="offline-pill lg">Reconectando…</div>` : null}
       <section class="mob-list" aria-hidden=${inChat}>
         ${tab === 'home' ? html`<${MobileServers} />` : null}
-        ${tab === 'dms' ? html`<div class="mob-page"><header class="mob-head glass"><h1>Conversas</h1></header><div class="side-scroll"><${DMList} /></div></div>` : null}
+        ${tab === 'dms' ? html`<div class="mob-page"><div class="mob-title"><h1>Conversas</h1><button class="gbtn icon-only" title="Novo grupo" onClick=${() => openModal('createGroup')}><${Icon} n="group" s=${17} /></button></div><div class="side-scroll"><${DMList} /></div></div>` : null}
         ${tab === 'friends' ? html`<div class="mob-page"><${Friends} mobile /></div>` : null}
         ${tab === 'me' ? html`<div class="mob-page"><${MePage} /></div>` : null}
         <${GlassBar} items=${tabs} value=${tab} onChange=${(k) => setUI({ tab: k })} class="tabbar" itemClass="tab" />
@@ -300,7 +304,7 @@ function MobileServers() {
   return html`
     <div class="mob-servers">
       <${ServerRail} browseOnly />
-      <div class="mob-side">
+      <div class="mob-side material">
         ${sid ? html`<${ServerSidebar} id=${sid} />` : html`<${HomeSidebar} />`}
         <${VoiceDock} />
       </div>

@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
   selectSource: (id, audio) => ipcRenderer.invoke('screen:select', id, audio),
   notify: (n) => ipcRenderer.send('notify', { title: String(n.title || ''), body: String(n.body || '') }),
   setPttKey: (code) => ipcRenderer.send('ptt:key', String(code || '')),
+  attention: () => ipcRenderer.send('attention'),
   onPtt: (cb) => { pttCb = cb; },
 });
