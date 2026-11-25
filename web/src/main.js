@@ -24,10 +24,22 @@ applyTheme();
 // PC fraco: 4 núcleos ou menos, ou sem aceleração de vídeo
 const weakPC = () => (navigator.hardwareConcurrency || 8) <= 4 || document.documentElement.classList.contains('nogpu');
 let frozen = false;
+let wasIdle = false;
+/** modo leve: pausa só animações que repetem para sempre (brilhos, estrelas, discos...).
+ *  Animações de abrir/fechar (que acabam sozinhas) nunca são tocadas. Repassa a cada 4 s para pegar as novas. */
+const sweepAnimations = () => {
+  for (const a of document.getAnimations()) {
+    if (a.effect?.getTiming?.().iterations !== Infinity) continue;
+    if (wasIdle && a.playState === 'running') { a.pause(); a.__leve = true; }
+    else if (!wasIdle && a.__leve) { a.play(); a.__leve = false; }
+  }
+};
+setInterval(() => { if (wasIdle) sweepAnimations(); }, 4000);
 const setIdle = () => {
   // leve = janela sem foco/escondida, jogo aberto (mesmo com o app num 2º monitor), PC fraco ou modo desempenho ligado
   const idle = document.hidden || !document.hasFocus() || !!S.myGame || weakPC() || !!S.settings.perfMode;
   document.documentElement.classList.toggle('idle', idle);
+  if (idle !== wasIdle) { wasIdle = idle; sweepAnimations(); }
   // GIFs e vídeos do chat: param só quando você não está olhando (sem foco/escondido) ou com um jogo aberto
   const freeze = document.hidden || !document.hasFocus() || !!S.myGame;
   if (freeze === frozen) return;

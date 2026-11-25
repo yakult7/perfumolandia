@@ -296,7 +296,7 @@
 .bundle:hover .deco svg *, .bundle:hover .pframe *, .bundle:hover .pfx > i, .bundle:hover .pfx > b,
 .np:hover::before, .shop-card:hover .np::before, .call .deco svg *, .stage .person.speaking .deco svg * { animation-play-state: running; }
 /* janela sem foco ou escondida (jogo na frente): para tudo e tira a refração do vidro */
-html.idle *:not(.pop):not(.menu):not(.toast):not(.modal):not(.modal-wrap):not(.sheet):not(.ppop):not(.rc-incoming), html.idle *::before, html.idle *::after { animation-play-state: paused !important; }
+/* (o modo leve pausa só animações infinitas, pelo main.js — nunca as de abrir/fechar janelas) */
 html.idle .lg, html.idle .gbtn, html.idle .lens { backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important; -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important; }
 
 /* chamando: quem ainda não atendeu fica piscando */
