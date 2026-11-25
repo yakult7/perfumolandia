@@ -19,7 +19,7 @@ const PIXELS = Array.from({ length: 16 }, () => ({
 
 export function Auth() {
   const [mode, setMode] = useState('login');
-  const [f, setF] = useState({ username: '', password: '', displayName: '' });
+  const [f, setF] = useState({ username: '', email: '', password: '', password2: '', displayName: '' });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const up = (k) => (e) => setF({ ...f, [k]: e.target.value });
@@ -60,14 +60,21 @@ export function Auth() {
             <p>${isNew ? 'Escolha seu usuário e chame a turma.' : 'Que bom te ver de novo por aqui!'}</p>
           </div>
           <form onSubmit=${submit} class="auth-form">
-            <label class="field"><span class="field-label">Usuário <i class="req">*</i></span>
-              <input autocomplete="username" autocapitalize="none" spellcheck="false" value=${f.username} onInput=${up('username')} required autofocus /></label>
+            ${isNew ? html`
+              <label class="field"><span class="field-label">Email <i class="req">*</i></span>
+                <input type="email" autocomplete="email" autocapitalize="none" spellcheck="false" value=${f.email} onInput=${up('email')} required autofocus /></label>` : null}
+            <label class="field"><span class="field-label">${isNew ? 'Nome de usuário' : 'Usuário ou email'} <i class="req">*</i></span>
+              <input autocomplete="username" autocapitalize="none" spellcheck="false" value=${f.username} onInput=${up('username')} required autofocus=${!isNew} /></label>
             ${isNew ? html`
               <label class="field"><span class="field-label">Nome de exibição</span>
                 <input value=${f.displayName} onInput=${up('displayName')} maxlength="32" placeholder="Como os amigos te veem" /></label>` : null}
             <label class="field"><span class="field-label">Senha <i class="req">*</i></span>
               <${PasswordInput} value=${f.password} onInput=${up('password')} autocomplete=${isNew ? 'new-password' : 'current-password'} required minlength="6" /></label>
-            ${isNew ? html`<small class="field-hint">Usuário: letras minúsculas, números, _ ou . (3 a 20). Senha: mínimo de 6 caracteres.</small>` : null}
+            ${isNew ? html`
+              <label class="field"><span class="field-label">Repita a senha <i class="req">*</i></span>
+                <${PasswordInput} value=${f.password2} onInput=${up('password2')} autocomplete="new-password" required minlength="6" /></label>
+              ${f.password2 && f.password !== f.password2 ? html`<small class="form-err">As senhas não são iguais.</small>` : null}
+              <small class="field-hint">Usuário: letras minúsculas, números, _ ou . (3 a 20). Senha: mínimo de 6 caracteres. Vamos mandar um código de confirmação para o seu email.</small>` : null}
             ${err ? html`<div class="form-err">${err}</div>` : null}
             <button class="gbtn primary wide auth-submit" disabled=${busy}>${busy ? 'Aguarde…' : isNew ? 'Continuar' : 'Entrar'}</button>
             <p class="auth-switch">

@@ -61,10 +61,10 @@ export function userMenu(e, uid, { dmId, anchor = false } = {}) {
     if (friend) items.push({ label: 'Desfazer amizade', danger: true, icon: I('userMinus'), onClick: () => openModal('confirm', { title: 'Desfazer amizade', text: `Remover ${u.displayName} dos seus amigos?`, cta: 'Desfazer amizade', action: () => run(api.removeFriend(rel.id), 'Amizade desfeita.') }) });
     if (pending) items.push({ label: 'Cancelar pedido de amizade', danger: true, icon: I('userMinus'), onClick: () => run(api.removeFriend(rel.id)) });
     items.push(isBlocked(uid)
-      ? { label: 'Desbloquear', icon: I('lock'), onClick: () => toggle('blocked', uid, false) }
+      ? { label: 'Desbloquear', icon: I('lock'), onClick: () => api.setBlocked(uid, false) }
       : { label: 'Bloquear', danger: true, icon: I('lock'), onClick: () => openModal('confirm', {
-        title: `Bloquear ${u.displayName}?`, text: 'As mensagens dele ficam escondidas, ligações e pedidos dele são ignorados e a amizade é desfeita.', cta: 'Bloquear',
-        action: () => { toggle('blocked', uid, true); if (rel) api.removeFriend(rel.id).catch(() => {}); toast(`${u.displayName} foi bloqueado.`); } }) });
+        title: `Bloquear ${u.displayName}?`, text: 'As mensagens da pessoa não chegam mais para você, ligações e pedidos são ignorados e a amizade é desfeita. Ela também deixa de ver sua foto, sua bio e se você está online.', cta: 'Bloquear',
+        action: () => { api.setBlocked(uid, true); if (rel) api.removeFriend(rel.id).catch(() => {}); toast(`${u.displayName} foi bloqueado.`); } }) });
   }
   items.push(
     { sep: true },

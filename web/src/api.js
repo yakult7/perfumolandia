@@ -1,7 +1,7 @@
 // Camada de dados: Supabase (auth, banco, tempo real, arquivos). Sem servidor próprio.
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_KEY, EMAIL_DOMAIN } from './config.js';
-import { S, set } from './store.js';
+import { S, set, setSettings } from './store.js';
 import { sounds } from './sounds.js';
 import * as rtc from './rtc.js';
 import { toast, markRead, notifyDesktop, go } from './actions.js';
@@ -25,7 +25,11 @@ function translate(m = '') {
   if (/duplicate key.*username/i.test(m)) return 'Esse nome de usuário já existe.';
   if (/relations_pair/i.test(m)) return 'Já existe um pedido ou amizade com essa pessoa.';
   if (/Password should be/i.test(m)) return 'A senha precisa ter pelo menos 6 caracteres.';
-  if (/rate limit/i.test(m)) return 'Muitas tentativas. Espere um pouco.';
+  if (/rate limit|only request this after/i.test(m)) return 'Muitas tentativas. Espere um pouco e tente de novo.';
+  if (/email.*already.*(registered|exists)|already been registered/i.test(m)) return 'Esse email já está em uso em outra conta.';
+  if (/sending.*email|send.*email|smtp/i.test(m)) return 'Não deu para enviar o email agora. Tente de novo mais tarde.';
+  if (/Token has expired|otp.*(expired|invalid)|invalid.*token/i.test(m)) return 'Código errado ou vencido. Confira ou peça outro.';
+  if (/Unable to validate email|invalid format|valid email|Email address .* is invalid/i.test(m)) return 'Esse email não foi aceito. Confira e tente de novo.';
   if (/Failed to fetch|NetworkError/i.test(m)) return 'Sem internet ou servidor fora do ar.';
   return m;
 }
@@ -41,8 +45,10 @@ const mapGroup = (g, members = []) => ({ id: g.id, name: g.name, icon: g.icon_ur
 export const mapMsg = (m) => ({
   id: m.id, channelId: m.channel_id, authorId: m.author_id, content: m.content, attachments: m.attachments || [],
   replyTo: m.reply_to, reactions: m.reactions || {}, createdAt: Date.parse(m.created_at), editedAt: m.edited_at ? Date.parse(m.edited_at) : null,
-  type: m.type || 'text', meta: m.meta || {},
+  type: m.type || 'text', meta: m.meta || {}, blocked: !!m.blocked,
 });
+/** quem me bloqueou: não vejo foto, bio, banner nem status da pessoa */
+const hide = (u) => (u && S.blockedBy[u.id] ? { ...u, avatar: null, bio: '', banner: null, customStatus: '', pronouns: '', accent: null, decoration: null, effect: null, frame: null, nameplate: null } : u);
 const mapRel = (r) => ({ id: r.id, from: r.from_id, to: r.to_id, status: r.status });
 const mapDm = (d) => ({ id: d.id, members: [d.user_a, d.user_b] });
 const mapServer = (s, members = [], channels = []) => ({
@@ -54,10 +60,14 @@ const mapServer = (s, members = [], channels = []) => ({
 const emailOf = (u) => `${u.trim().toLowerCase()}@${EMAIL_DOMAIN}`;
 const validUser = (u) => /^[a-z0-9_.]{3,20}$/.test(u);
 
-export async function register({ username, password, displayName }) {
+export const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e.trim());
+
+export async function register({ username, email, password, password2, displayName }) {
   const u = username.trim().toLowerCase();
   if (!validUser(u)) throw new Error('Usuário: 3 a 20 caracteres (letras minúsculas, números, _ ou .).');
+  if (!validEmail(email || '')) throw new Error('Digite um email válido.');
   if (password.length < 6) throw new Error('A senha precisa ter pelo menos 6 caracteres.');
+  if (password !== password2) throw new Error('As senhas não são iguais.');
   const { error } = await sb.auth.signUp({ email: emailOf(u), password });
   if (error && !/already registered/i.test(error.message)) throw new Error(translate(error.message));
   if (error) {
@@ -66,12 +76,53 @@ export async function register({ username, password, displayName }) {
     if (r.error) throw new Error('Esse usuário já existe.');
   }
   must(await sb.rpc('create_profile', { p_username: u, p_display_name: displayName || u }));
+  // manda o código para o email; se falhar, o app pede de novo depois
+  await requestEmail(email).catch((x) => set((s) => { s.emailError = x.message; }));
   await start();
 }
 
+/** entra com usuário ou email */
 export async function login({ username, password }) {
-  must(await sb.auth.signInWithPassword({ email: emailOf(username), password }));
+  const id = username.trim();
+  let email = id.includes('@') ? id.toLowerCase() : null;
+  if (!email) {
+    // contas com email de verdade: o servidor só devolve o email se a senha estiver certa
+    const r = await sb.rpc('login_email', { p_username: id, p_password: password });
+    if (r.error && /tentativas/i.test(r.error.message)) throw new Error(r.error.message);
+    email = r.data || emailOf(id);
+  }
+  must(await sb.auth.signInWithPassword({ email, password }));
   await start();
+}
+
+// ---------- email da conta (com código de confirmação) ----------
+const fakeEmail = (e) => !e || e.endsWith('@' + EMAIL_DOMAIN);
+/** confere se a conta ainda não tem email confirmado (contas antigas) */
+export async function checkEmail() {
+  let u = (await sb.auth.getUser()).data?.user;
+  if (!u) return;
+  // entrou pelo link do email (em vez do código): marca como confirmado
+  if (u.app_metadata?.email_pending && (await sb.rpc('finish_email_change')).data) u = (await sb.auth.getUser()).data?.user || u;
+  const pending = !fakeEmail(u.email) && !!u.app_metadata?.email_pending;
+  set((s) => { s.needsEmail = fakeEmail(u.email) || pending; s.emailPending = pending ? u.email : null; });
+}
+/** coloca o email na conta (ainda sem confirmar) e o Supabase manda o código para ele */
+export async function requestEmail(email) {
+  const e = email.trim().toLowerCase();
+  if (!validEmail(e)) throw new Error('Digite um email válido.');
+  if (e !== S.emailPending) must(await sb.rpc('start_email_change', { p_email: e }));
+  set((s) => { s.emailPending = e; s.emailError = null; });
+  must(await sb.auth.signInWithOtp({ email: e, options: { shouldCreateUser: false } }));
+}
+export async function verifyEmail(code) {
+  const email = S.emailPending;
+  if (!email) throw new Error('Digite seu email primeiro.');
+  const token = code.replace(/\D/g, '');
+  if (token.length < 6) throw new Error('O código tem 6 números.');
+  must(await sb.auth.verifyOtp({ email, token, type: 'email' }));
+  must(await sb.rpc('finish_email_change'));
+  await sb.auth.refreshSession().catch(() => {});
+  await checkEmail();
 }
 
 export async function logout() {
@@ -103,9 +154,11 @@ export async function start() {
   if (!started) { started = true; subscribeRealtime(uid); }
   set((s) => { s.authed = true; s.booting = false; s.ready = true; s.needsProfile = false; });
   handleDeepLink();
+  checkEmail().catch(() => {});
 }
 
 async function loadAll(uid) {
+  await loadBlocks(uid);
   const [profiles, relations, servers, members, channels, dms, last, groups, gmembers] = await Promise.all([
     sb.from('profiles').select('*'),
     sb.from('relations').select('*'),
@@ -117,7 +170,7 @@ async function loadAll(uid) {
     sb.from('groups').select('*'),
     sb.from('group_members').select('group_id,user_id'),
   ].map((p) => p.then(must)));
-  const users = Object.fromEntries(profiles.map((p) => [p.id, mapUser(p)]));
+  const users = Object.fromEntries(profiles.map((p) => [p.id, hide(mapUser(p))]));
   const svs = {};
   for (const s of servers) {
     svs[s.id] = mapServer(s, members.filter((m) => m.server_id === s.id).map((m) => m.user_id), channels.filter((c) => c.server_id === s.id));
@@ -134,6 +187,33 @@ async function loadAll(uid) {
     s.groups = Object.fromEntries(groups.map((g) => [g.id, mapGroup(g, gmembers.filter((m) => m.group_id === g.id).map((m) => m.user_id))]));
     s.messages = {};
   });
+}
+
+// ---------- bloqueios (guardados no servidor) ----------
+async function loadBlocks(uid) {
+  const { data, error } = await sb.from('blocks').select('blocker,blocked');
+  if (error) return; // tabela ainda não criada: fica só no aparelho, como antes
+  const mine = {}, by = {};
+  for (const b of data) { if (b.blocker === uid) mine[b.blocked] = true; else if (b.blocked === uid) by[b.blocker] = true; }
+  // bloqueios antigos (só neste aparelho) sobem para o servidor uma vez; depois o servidor manda
+  if (!S.settings.blocksSynced) {
+    const local = Object.keys(S.settings.blocked || {}).filter((id) => S.settings.blocked[id] && !mine[id] && id !== uid && !by[id]);
+    for (const id of local) { mine[id] = true; sb.from('blocks').insert({ blocked: id }).then(() => {}); }
+  }
+  const changed = Object.keys({ ...by, ...S.blockedBy }).filter((id) => !!by[id] !== !!S.blockedBy[id]);
+  set((s) => { s.blockedBy = by; });
+  setSettings({ blocked: mine, blocksSynced: true });
+  // quem me bloqueou/desbloqueou agora: refaz o perfil com ou sem as informações
+  if (changed.length && S.ready) {
+    const { data: ps } = await sb.from('profiles').select('*').in('id', changed);
+    if (ps) set((s) => { const n = { ...s.users }; for (const p of ps) n[p.id] = hide(mapUser(p)); s.users = n; });
+    onPresenceSync();
+  }
+}
+export async function setBlocked(uid, on) {
+  setSettings({ blocked: { ...(S.settings.blocked || {}), [uid]: on || undefined } });
+  const r = on ? await sb.from('blocks').insert({ blocked: uid }) : await sb.from('blocks').delete().eq('blocker', S.uid).eq('blocked', uid);
+  if (r.error && !/duplicate/i.test(r.error.message)) console.warn('bloqueio', r.error.message);
 }
 
 async function refreshServer(id) {
@@ -198,10 +278,11 @@ function makeDb(uid) {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, ({ new: p, eventType }) => {
       if (eventType === 'DELETE') return;
       set((s) => {
-        s.users = { ...s.users, [p.id]: mapUser(p) };
+        s.users = { ...s.users, [p.id]: hide(mapUser(p)) };
         if (p.id === s.uid) s.me = s.users[p.id];
       });
     })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'blocks' }, () => loadBlocks(uid).catch(() => {}))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'relations' }, ({ new: r, old, eventType }) => set((s) => {
       const n = { ...s.relations };
       if (eventType === 'DELETE') delete n[old.id]; else n[r.id] = mapRel(r);
@@ -359,6 +440,7 @@ export function setMyGame(g) {
 }
 
 function onPresenceSync() {
+  if (!globalChan) return;
   const all = globalChan.presenceState(); // { clientId: [meta, ...] }
   const online = {};
   const voice = {};
@@ -368,7 +450,7 @@ function onPresenceSync() {
   const rank = { online: 3, dnd: 2, idle: 1, invisible: 0 };
   for (const [sid, metas] of Object.entries(all)) {
     const meta = metas[metas.length - 1];
-    if (!meta?.uid) continue;
+    if (!meta?.uid || S.blockedBy[meta.uid]) continue; // quem me bloqueou aparece offline
     const st = meta.status === 'invisible' ? 'offline' : meta.status;
     if (st !== 'offline' && (!online[meta.uid] || rank[st] > rank[online[meta.uid]])) online[meta.uid] = st;
     if (meta.game?.name && st !== 'offline') games[meta.uid] = meta.game;
@@ -517,6 +599,14 @@ export async function latestCallLog(channelId) {
   return data?.[0] ? mapMsg(data[0]) : null;
 }
 export const editMessage = async (id, content) => must(await sb.from('messages').update({ content, edited_at: new Date().toISOString() }).eq('id', id));
+/** some com a mensagem bloqueada (5 min depois de enviada) */
+export function dropBlockedMessage(m) {
+  set((s) => {
+    const box = s.messages[m.channelId];
+    if (box) s.messages = { ...s.messages, [m.channelId]: { ...box, list: box.list.filter((x) => x.id !== m.id) } };
+  });
+  sb.from('messages').delete().eq('id', m.id).then(() => {});
+}
 export const deleteMessage = async (id) => must(await sb.from('messages').delete().eq('id', id));
 export const toggleReaction = async (id, emoji) => must(await sb.rpc('toggle_reaction', { mid: id, emoji }));
 

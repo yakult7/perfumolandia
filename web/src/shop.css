@@ -384,3 +384,21 @@ html.nogpu .lg, html.nogpu .gbtn:not(.primary):not(.ok):not(.on):not(.off):not(.
 .an-avs { display: inline-flex; }
 .an-avs .avatar { margin-left: -6px; box-shadow: 0 0 0 2px var(--surface-solid); }
 .an-avs .avatar:first-child { margin-left: 0; }
+
+/* aviso de mensagem para quem te bloqueou */
+.blocked-notice { display: flex; align-items: flex-start; gap: 8px; margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: rgba(242, 63, 67, 0.12); color: var(--text-2); font-size: 12.5px; line-height: 1.4; max-width: 560px; }
+.blocked-notice .ic { color: #f23f43; flex-shrink: 0; margin-top: 2px; }
+
+/* pedido de email (contas sem email confirmado) */
+.email-gate { z-index: 230; }
+.email-gate .modal { max-width: 420px; }
+.eg-head { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.eg-head h2 { font-size: 20px; margin: 4px 0 0; }
+.eg-head p { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.45; }
+.eg-ic { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+.eg-input { height: 44px; font-size: 15px; }
+.eg-code { text-align: center; font: 700 24px/1 var(--mono); letter-spacing: 0.35em; }
+.eg-links { justify-content: space-between; font-size: 13px; }
+.eg-links .link { color: #8ab4ff; }
+.eg-links .link:hover { text-decoration: underline; }
+.eg-later { color: var(--text-2); font-size: 13px; }

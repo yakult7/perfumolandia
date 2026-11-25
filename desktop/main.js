@@ -197,7 +197,12 @@ ipcMain.on('badge', (e, n, dataUrl) => {
   } catch {}
 });
 ipcMain.handle('update:get', () => updateReady());
-ipcMain.handle('update:install', () => { quitting = true; installNow(); });
+ipcMain.handle('update:install', () => {
+  quitting = true;
+  installNow();
+  // se o instalador não fechar o app em alguns segundos, fecha mesmo assim (instala ao sair)
+  setTimeout(() => app.quit(), 6000);
+});
 // PC sem aceleração de vídeo (o Windows desenha tudo na CPU): o app liga o modo leve sozinho
 ipcMain.handle('gpu:status', () => { try { return app.getGPUFeatureStatus(); } catch { return null; } });
 // painel "Uso agora" nos Ajustes: CPU de cada processo do app (em % do computador inteiro)

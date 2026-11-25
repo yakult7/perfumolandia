@@ -824,7 +824,7 @@ html.desktop-app .auth-top-brand { top: 44px; }
 .me-item:active { background: var(--hover); }
 
 /* app do Windows: barra de título arrastável */
-html.desktop-app body::before { content: ""; position: fixed; top: 0; left: 0; right: 140px; height: 30px; -webkit-app-region: drag; z-index: 200; }
+html.desktop-app body::before { content: ""; position: fixed; top: 0; left: 0; right: var(--drag-right, 140px); height: 30px; -webkit-app-region: drag; z-index: 200; }
 html.desktop-app .shell.desk { padding-top: 32px; }
 html.desktop-app .auth { padding-top: 40px; }
 

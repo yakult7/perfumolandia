@@ -5,7 +5,7 @@ import * as api from '../api.js';
 import * as rtc from '../rtc.js';
 import { md, isBigEmoji } from '../markdown.js';
 import { sendMessage, loadMessages, markRead, openMenu, openModal, back, run, safe, toast, dmPartner, callDM, statusOf, groupName } from '../actions.js';
-import { Avatar, GBtn, Spinner, Empty, STATUS_LABEL, GroupAvatar, Activity } from './common.js';
+import { Avatar, GBtn, Spinner, Empty, STATUS_LABEL, GroupAvatar, Activity, useNow } from './common.js';
 import { CallDock } from './call.js';
 import { GifPicker, LinkMedia, isLinkMedia, Embeds } from './gifpicker.js';
 import { reportShare } from '../gifs.js';
@@ -188,7 +188,7 @@ function CallLog({ m }) {
 
 function Message({ m, grouped, names, onReply, editing, setEditing }) {
   if (m.type === 'call') return html`<${CallLog} m=${m} />`;
-  if (isIgnored(m.authorId)) return html`<${IgnoredMessage} m=${m} grouped=${grouped} names=${names} onReply=${onReply} editing=${editing} setEditing=${setEditing} />`;
+  if (m.authorId !== S.uid && isIgnored(m.authorId)) return html`<${IgnoredMessage} m=${m} grouped=${grouped} names=${names} onReply=${onReply} editing=${editing} setEditing=${setEditing} />`;
   return html`<${TextMessage} m=${m} grouped=${grouped} names=${names} onReply=${onReply} editing=${editing} setEditing=${setEditing} />`;
 }
 
@@ -197,6 +197,20 @@ function IgnoredMessage(props) {
   useS((s) => s.settings.ignored?.[props.m.authorId] || s.settings.blocked?.[props.m.authorId]);
   if (show) return html`<${TextMessage} ...${props} />`;
   return html`<div class="msg ignored"><button class="ignored-pill" onClick=${() => setShow(true)}><${Icon} n="eyeOff" s=${13} /> Mensagem de usuário ${isBlocked(props.m.authorId) ? 'bloqueado' : 'ignorado'} · mostrar</button></div>`;
+}
+
+/** mensagem para quem me bloqueou: não chega, aparece o aviso e some em 5 minutos */
+function BlockedNotice({ m }) {
+  useNow(15000);
+  const end = m.createdAt + 5 * 60 * 1000;
+  useEffect(() => {
+    const t = setTimeout(() => api.dropBlockedMessage(m), Math.max(0, end - Date.now()));
+    return () => clearTimeout(t);
+  }, [m.id]);
+  const min = Math.max(1, Math.ceil((end - Date.now()) / 60000));
+  return html`<div class="blocked-notice"><${Icon} n="lock" s=${14} />
+    <span>Sua mensagem não pôde ser entregue: essa pessoa não está recebendo mensagens suas.
+      Ela só aparece para você e será apagada em ${min === 1 ? '1 minuto' : `${min} minutos`}.</span></div>`;
 }
 
 function TextMessage({ m, grouped, names, onReply, editing, setEditing }) {
@@ -254,6 +268,7 @@ function TextMessage({ m, grouped, names, onReply, editing, setEditing }) {
               <button class="react add" title="Reagir" onClick=${() => openModal('react', { m })}><${Icon} n="smile" s=${15} /></button>
             </div>` : null}
           ${m.failed ? html`<small class="err-text">Não enviada. Verifique a conexão.</small>` : null}
+          ${m.blocked && mine ? html`<${BlockedNotice} m=${m} />` : null}
         </div>
       </div>
       ${!m.pending && !editing ? html`

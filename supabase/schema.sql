@@ -418,3 +418,161 @@ begin
   where id = mid;
 end $$;
 grant execute on function public.set_call_status(uuid, text) to authenticated;
+
+-- ---------- bloqueios ----------
+-- quem bloqueou não recebe mais as mensagens da pessoa; quem foi bloqueado vê o aviso e a mensagem some em 5 min
+create table if not exists public.blocks (
+  blocker uuid not null default auth.uid() references public.profiles on delete cascade,
+  blocked uuid not null references public.profiles on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker, blocked)
+);
+alter table public.blocks enable row level security;
+drop policy if exists "blocks read" on public.blocks;
+create policy "blocks read" on public.blocks for select to authenticated using (auth.uid() in (blocker, blocked));
+drop policy if exists "blocks insert" on public.blocks;
+create policy "blocks insert" on public.blocks for insert to authenticated with check (blocker = auth.uid() and blocked <> auth.uid());
+drop policy if exists "blocks delete" on public.blocks;
+create policy "blocks delete" on public.blocks for delete to authenticated using (blocker = auth.uid());
+do $$ begin
+  alter publication supabase_realtime add table public.blocks;
+exception when duplicate_object then null; end $$;
+
+alter table public.messages add column if not exists blocked boolean not null default false;
+create index if not exists messages_blocked on public.messages (created_at) where blocked;
+
+create or replace function public.mark_blocked_message() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.blocked := old.blocked; -- ninguém desmarca na mão
+  else
+    new.blocked := exists (
+      select 1 from dms d join blocks b
+        on b.blocked = new.author_id and b.blocker = case when d.user_a = new.author_id then d.user_b else d.user_a end
+      where d.id = new.channel_id);
+  end if;
+  return new;
+end $$;
+drop trigger if exists messages_mark_blocked on public.messages;
+create trigger messages_mark_blocked before insert or update on public.messages
+  for each row execute function public.mark_blocked_message();
+
+-- mensagem bloqueada: só o autor vê, e só por 5 minutos
+drop policy if exists "msg read" on public.messages;
+create policy "msg read" on public.messages for select to authenticated using (
+  can_access(channel_id) and (not blocked or (author_id = auth.uid() and created_at > now() - interval '5 minutes'))
+);
+
+create or replace function public.last_messages() returns table (channel_id uuid, message_id uuid, created_at timestamptz)
+language sql security definer set search_path = public stable as $$
+  with rooms as (
+    select c.id from channels c join server_members sm on sm.server_id = c.server_id and sm.user_id = auth.uid()
+    union
+    select d.id from dms d where auth.uid() in (d.user_a, d.user_b)
+    union
+    select gm.group_id from group_members gm where gm.user_id = auth.uid()
+  )
+  select r.id, lm.id, lm.created_at
+  from rooms r
+  left join lateral (select m.id, m.created_at from messages m where m.channel_id = r.id
+                       and (not m.blocked or (m.author_id = auth.uid() and m.created_at > now() - interval '5 minutes'))
+                     order by m.created_at desc limit 1) lm on true;
+$$;
+grant execute on function public.last_messages() to authenticated;
+
+-- apaga de verdade as mensagens bloqueadas com mais de 5 minutos (a cada minuto)
+do $$ begin
+  create extension if not exists pg_cron;
+  perform cron.schedule('apagar-msgs-bloqueadas', '* * * * *',
+    $c$delete from public.messages where blocked and created_at < now() - interval '5 minutes'$c$);
+exception when others then raise notice 'pg_cron indisponível: %', sqlerrm; end $$;
+
+-- ---------- login por usuário com email de verdade ----------
+-- devolve o email da conta só se a senha estiver certa (não expõe o email de ninguém); 10 erros em 15 min bloqueia
+create table if not exists public.login_attempts (username text not null, at timestamptz not null default now());
+alter table public.login_attempts enable row level security;
+create index if not exists login_attempts_user on public.login_attempts (username, at);
+
+create or replace function public.login_email(p_username text, p_password text) returns text
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  uname text := lower(trim(p_username));
+  em text; pw text;
+begin
+  delete from login_attempts where at < now() - interval '1 day';
+  if (select count(*) from login_attempts where username = uname and at > now() - interval '15 minutes') >= 10 then
+    raise exception 'Muitas tentativas erradas. Espere 15 minutos e tente de novo.';
+  end if;
+  select au.email, au.encrypted_password into em, pw from auth.users au join profiles p on p.id = au.id where p.username = uname;
+  if pw is null or crypt(p_password, pw) <> pw then
+    insert into login_attempts (username) values (uname);
+    return null;
+  end if;
+  return em;
+end $$;
+revoke all on function public.login_email(text, text) from public;
+grant execute on function public.login_email(text, text) to anon, authenticated;
+
+-- ---------- email de verdade nas contas (com código de confirmação) ----------
+-- as contas antigas têm email falso (usuario@perfumolandia.app) e o Supabase não manda nada para ele.
+-- o email novo entra na conta marcado como "pendente" (app_metadata.email_pending) e o código vai só para ele.
+-- (a conta continua "confirmada" para o Supabase: conta não confirmada perde a senha ao pedir código)
+create table if not exists public.email_backup (user_id uuid primary key references auth.users on delete cascade, fake text not null);
+alter table public.email_backup enable row level security;
+
+create or replace function public.start_email_change(p_email text) returns void
+language plpgsql security definer set search_path = public, auth as $$
+declare
+  uid uuid := auth.uid();
+  e text := lower(trim(p_email));
+  cur auth.users;
+  other auth.users;
+begin
+  if uid is null then raise exception 'Faça login de novo.'; end if;
+  if e !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]{2,}$' or e like '%@perfumolandia.app' then
+    raise exception 'Digite um email válido.';
+  end if;
+  select * into cur from auth.users where id = uid;
+  if cur.email not like '%@perfumolandia.app' and coalesce((cur.raw_app_meta_data->>'email_pending')::boolean, false) = false then
+    raise exception 'Sua conta já tem um email confirmado.';
+  end if;
+  select * into other from auth.users where lower(email) = e and id <> uid;
+  if other.id is not null then
+    if coalesce((other.raw_app_meta_data->>'email_pending')::boolean, false) = false then
+      raise exception 'Esse email já está em uso em outra conta.';
+    end if;
+    -- outra conta pegou esse email e nunca confirmou: devolve o email antigo dela
+    update auth.users u set email = b.fake, raw_app_meta_data = u.raw_app_meta_data - 'email_pending'
+      from email_backup b where u.id = other.id and b.user_id = other.id;
+    update auth.identities i set identity_data = i.identity_data || jsonb_build_object('email', b.fake) from email_backup b
+      where i.user_id = other.id and i.provider = 'email' and b.user_id = other.id;
+  end if;
+  if cur.email like '%@perfumolandia.app' then
+    insert into email_backup (user_id, fake) values (uid, cur.email) on conflict (user_id) do update set fake = excluded.fake;
+  end if;
+  update auth.users set email = e, email_confirmed_at = coalesce(email_confirmed_at, now()),
+    raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"email_pending": true}'::jsonb, updated_at = now()
+    where id = uid;
+  update auth.identities set identity_data = identity_data || jsonb_build_object('email', e)
+    where user_id = uid and provider = 'email';
+end $$;
+revoke all on function public.start_email_change(text) from public;
+grant execute on function public.start_email_change(text) to authenticated;
+
+-- depois de entrar com o código: a sessão atual veio de um código de email (amr = otp) nos últimos 15 min
+create or replace function public.finish_email_change() returns boolean
+language plpgsql security definer set search_path = public, auth as $$
+declare uid uuid := auth.uid();
+begin
+  if uid is null then return false; end if;
+  if not exists (select 1 from jsonb_array_elements(coalesce(auth.jwt()->'amr', '[]'::jsonb)) a
+                 where a->>'method' in ('otp', 'magiclink', 'email/signup') and (a->>'timestamp')::bigint > extract(epoch from now()) - 900) then
+    return false;
+  end if;
+  update auth.users set raw_app_meta_data = raw_app_meta_data - 'email_pending', updated_at = now() where id = uid;
+  return true;
+end $$;
+revoke all on function public.finish_email_change() from public;
+grant execute on function public.finish_email_change() to authenticated;
+
