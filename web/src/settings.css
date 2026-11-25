@@ -171,3 +171,10 @@
 .qs-hint { font-size: 12px; color: var(--text-3); display: none; align-items: center; gap: 2px; }
 .qs-item.on .qs-hint { display: inline-flex; }
 .qs-empty, .qs-tip { margin: 0; padding: 14px 10px; color: var(--text-3); font-size: 13px; text-align: center; }
+
+/* ícones dos ajustes: só o desenho, em preto e branco (sem a caixinha colorida) */
+.st-ic, .st-ic.sm, .st-ic.big { background: none; box-shadow: none; color: var(--text-2); width: 22px; height: 22px; border-radius: 0; }
+.st-ic.big { width: 30px; height: 30px; color: var(--text); }
+.st-ic.big .ic { width: 26px; height: 26px; }
+.st-item.on .st-ic, .st-item:hover .st-ic { color: var(--text); }
+.st-danger .st-ic { color: #ff6b6b; }
