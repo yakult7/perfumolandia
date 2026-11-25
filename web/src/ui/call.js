@@ -163,6 +163,7 @@ function Tile({ t, big }) {
   const u = useS((s) => s.users[p.userId]);
   const speaking = useS((s) => kind === 'cam' && !!s.speaking[p.userId]);
   const watching = useS((s) => !!s.call?.watching?.[p.sid]);
+  const viewersMe = p.me && kind === 'screen' ? rtc.myViewers() : [];
   useS((s) => s.call?.v);
   const showStats = useS((s) => s.settings.showStats);
   const ref = useRef();
@@ -175,7 +176,7 @@ function Tile({ t, big }) {
   else if (kind === 'screen' ? watching : st.camera) stream = rtc.remoteStream(p.sid, kind);
   const hasVideo = !!stream?.getVideoTracks().length;
 
-  const focusMe = () => rtc.setFocus(big ? 'grid' : { sid: p.sid, kind });
+  const focusMe = () => (kind === 'screen' && !p.me && !watching ? rtc.watch(p.sid, true) : rtc.setFocus(big ? 'grid' : { sid: p.sid, kind }));
   const fullscreen = (e) => { e?.stopPropagation(); openTheater(p.sid, kind); };
   const pip = async (e) => {
     e?.stopPropagation();
@@ -216,12 +217,21 @@ function Tile({ t, big }) {
           ${u?.displayName}${p.me ? ' (você)' : ''}
         </span>
         ${conn !== 'connected' && !p.me ? html`<span class="tile-name lg" style="color:var(--warn)">${conn === 'failed' ? 'Sem conexão' : 'Conectando…'}</span>` : null}
+        ${kind === 'screen' && (st.viewers?.length || (p.me && viewersMe.length)) ? html`<${Viewers} ids=${p.me ? viewersMe : st.viewers} />` : null}
       </div>
       <div class="tile-tools" onClick=${(e) => e.stopPropagation()}>
         ${hasVideo ? html`<${GBtn} icon="maximize" title="Tela cheia" class="icon-only xs" onClick=${fullscreen} size=${13} />` : null}
         <${GBtn} icon="more" title="Opções" class="icon-only xs" onClick=${menu} size=${13} />
       </div>
     </div>`;
+}
+
+/** quem está assistindo a transmissão */
+function Viewers({ ids }) {
+  return html`<span class="tile-name lg viewers" title=${ids.map((id) => S.users[id]?.displayName).join(', ') + ' assistindo'}>
+    <${Icon} n="eye" s=${12} /> ${ids.length}
+    <span class="viewer-avs">${ids.slice(0, 4).map((id) => html`<${Avatar} key=${id} id=${id} size=${16} />`)}</span>
+  </span>`;
 }
 
 // ---------- modo cinema (tela cheia estável) ----------

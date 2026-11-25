@@ -488,8 +488,8 @@ function flushCands() {
 export function sendNativeSignal(to, data) {
   roomChan?.send({ type: 'broadcast', event: 'nsig', payload: { to, from: clientId, data } });
 }
-export function sendWatch(to, watch) {
-  roomChan?.send({ type: 'broadcast', event: 'watch', payload: { to, from: clientId, watch } });
+export function sendWatch(to, watch, q = null) {
+  roomChan?.send({ type: 'broadcast', event: 'watch', payload: { to, from: clientId, watch, q } });
 }
 
 // ---------- operações ----------

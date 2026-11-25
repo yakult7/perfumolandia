@@ -45,6 +45,7 @@ function myState() {
   return {
     muted: !!c.muted, deafened: !!c.deafened, camera: !!local.cam, screen: sharing,
     streams: streamsMap(), screenLabel: sharing ? c.screenLabel : null,
+    viewers: sharing ? [...new Set([...peers.values()].filter((p) => p.wantsScreen).map((p) => p.userId))] : [],
     music: local.music && S.myMusic ? { title: S.myMusic.title, artist: S.myMusic.artist, art: S.myMusic.art } : null,
   };
 }
@@ -147,6 +148,23 @@ class Peer {
       try { if (t.stop) t.stop(); else this.pc.removeTrack(t.sender); } catch {}
     }
     delete this.tx[kind];
+  }
+  /** quem assiste avisou o tamanho da tela dele e se a janela está escondida:
+   *  manda só a resolução que ele consegue mostrar (4K para monitor 1080p vira 1080p) e quase nenhum quadro se escondida */
+  applyScreenHint() {
+    const q = this.screenHint;
+    const t = (this.tx.screen || []).find((x) => x.sender.track?.kind === 'video');
+    if (!q || !t || !local.screenOpts) return;
+    const src = t.sender.track.getSettings();
+    const scale = Math.max(1, (src.height || 1080) / Math.max(360, q.h || 1080));
+    const fps = q.hidden ? 2 : local.screenOpts.q.fps;
+    const kbps = Math.round(local.screenOpts.q.kbps / (scale * scale) * (q.hidden ? 0.15 : 1));
+    const prm = t.sender.getParameters();
+    if (!prm.encodings?.length) return;
+    prm.encodings[0].scaleResolutionDownBy = scale;
+    prm.encodings[0].maxFramerate = fps;
+    prm.encodings[0].maxBitrate = Math.max(300, kbps) * 1000;
+    t.sender.setParameters(prm).catch(() => {});
   }
   replace(kind, track) {
     for (const t of this.tx[kind] || []) if (t.sender.track?.kind === track.kind || !t.sender.track) t.sender.replaceTrack(track).catch(() => {});
@@ -502,7 +520,11 @@ export function onVoiceUpdate(roomId, parts) {
       early.delete(p.sid);
       if (settled) sounds.peerJoin();
     }
+    const wasSharing = !!peer.state?.screen;
     peer.state = p.state || {};
+    // alguém começou/parou de transmitir: som (como no Discord)
+    if (settled && !wasSharing && peer.state.screen) sounds.streamStart();
+    if (settled && wasSharing && !peer.state.screen) sounds.streamStop();
     if (!peer.state.screen && watching[p.sid]) watching = { ...watching, [p.sid]: false };
   }
   for (const [sid, peer] of peers) {
@@ -517,16 +539,19 @@ export function onVoiceUpdate(roomId, parts) {
   applyVolumes();
 }
 
-function onWatch({ from, watch }) {
+function onWatch({ from, watch, q }) {
   const p = peers.get(from);
   if (!p) { pendingWatch.set(from, watch); return; }
+  if (q) { p.screenHint = q; p.applyScreenHint(); }
+  if (p.wantsScreen === watch) return; // só a dica de qualidade mudou
   p.wantsScreen = watch;
+  if (local.screen || local.native) { if (watch) sounds.viewerJoin(); else sounds.viewerLeave(); setTimeout(publish, 0); }
   if (local.native) {
     if (watch) nativeOffer(from); else local.native.plugin.closePeer({ peerId: from }).catch(() => {});
     return;
   }
   if (!local.screen) return;
-  if (watch) p.send('screen', local.screen); else p.unsend('screen');
+  if (watch) { p.send('screen', local.screen); p.applyScreenHint(); } else p.unsend('screen');
 }
 
 // ---------- controles ----------
@@ -668,11 +693,17 @@ export const isSharingMusic = () => !!local.music;
 /** música trocou no Spotify: atualiza o que os outros veem (o som já segue sozinho) */
 export const refreshMusic = () => { if (local.music) publish(); };
 
+/** tamanho da minha tela e se a janela está escondida (quem transmite ajusta a qualidade só para mim) */
+const viewHint = () => ({ h: Math.round((window.screen?.height || 1080) * (window.devicePixelRatio || 1)), hidden: document.hidden });
+document.addEventListener('visibilitychange', () => {
+  for (const [sid, on] of Object.entries(S.call?.watching || {})) if (on) api.sendWatch(sid, true, viewHint());
+});
 export function watch(sid, on) {
   if (!S.call) return;
   patchCall({ watching: { ...S.call.watching, [sid]: on }, focus: on ? { sid, kind: 'screen' } : S.call.focus?.sid === sid ? null : S.call.focus });
   if (!on) peers.get(sid)?.closeNativeRx();
-  api.sendWatch(sid, on);
+  api.sendWatch(sid, on, on ? viewHint() : null);
+  if (on) sounds.viewerJoin();
   applyVolumes();
 }
 export const setFocus = (focus) => patchCall({ focus });
@@ -700,6 +731,7 @@ export function remoteStream(sid, kind) {
   return peers.get(sid)?.getStream(kind) || null;
 }
 export const connectionOf = (sid) => peers.get(sid)?.pc.connectionState || 'new';
+export const myViewers = () => [...new Set([...peers.values()].filter((p) => p.wantsScreen).map((p) => p.userId))];
 export const isSharing = () => !!local.screen || !!local.native;
 export const hasCam = () => !!local.cam;
 

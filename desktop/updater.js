@@ -52,15 +52,18 @@ function checkBeforeStart({ icon, silent }) {
 }
 
 /** com o app aberto (ex.: ligado o dia todo), procura de novo de tempos em tempos e instala ao fechar */
-function backgroundChecks() {
+/** com o app aberto: procura a cada 30 min; baixada, avisa o app (botão "Reiniciar") e instala sozinha ao fechar */
+let readyVersion = null;
+function backgroundChecks(onReady) {
   if (!app.isPackaged || !autoUpdater) return;
   autoUpdater.removeAllListeners();
-  autoUpdater.on('update-downloaded', (info) => {
-    if (Notification.isSupported()) {
-      new Notification({ title: 'Perfumolandia', body: `Versão ${info.version} baixada. Ela será instalada na próxima vez que você abrir o app.`, silent: true }).show();
-    }
-  });
-  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 2 * 60 * 60 * 1000);
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('update-downloaded', (info) => { readyVersion = info.version; onReady?.(info.version); });
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  setTimeout(check, 3 * 60 * 1000);
+  setInterval(check, 30 * 60 * 1000);
 }
+const updateReady = () => readyVersion;
+const installNow = () => { if (readyVersion && autoUpdater) autoUpdater.quitAndInstall(true, true); };
 
-module.exports = { checkBeforeStart, backgroundChecks };
+module.exports = { checkBeforeStart, backgroundChecks, updateReady, installNow };

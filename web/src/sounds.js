@@ -57,6 +57,9 @@ export const sounds = {
   unmute() { if (!on()) return; note(420, 0, 0.12, { glide: 700, gain: 0.14 }); },
   message() { if (!on()) return; note(1175, 0, 0.12, { gain: 0.1 }); note(1568, 0.06, 0.18, { gain: 0.08 }); },
   streamStart() { if (!on()) return; note(523, 0, 0.12); note(659, 0.07, 0.12); note(784, 0.14, 0.24); },
+  streamStop() { if (!on()) return; note(784, 0, 0.1); note(659, 0.07, 0.1); note(523, 0.14, 0.2); },
+  viewerJoin() { if (!on()) return; note(880, 0, 0.08); note(1175, 0.06, 0.16); },
+  viewerLeave() { if (!on()) return; note(1175, 0, 0.08); note(880, 0.06, 0.14); },
   /** toque contínuo: recebendo (melodia) ou chamando (tom de chamada) — toca mesmo com sons do app desligados */
   ring(outgoing = false) {
     this.stopRing();

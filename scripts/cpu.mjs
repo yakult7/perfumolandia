@@ -7,7 +7,7 @@ const [user, pass, setup = ''] = process.argv.slice(2);
 const ROOT = path.join(import.meta.dirname, '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const PROFILE = 'cpu' + Date.now().toString(36);
-const proc = spawn(path.join(ROOT, 'desktop/node_modules/electron/dist/electron.exe'), ['.', '--remote-debugging-port=9361'], {
+const proc = spawn(path.join(ROOT, 'desktop/node_modules/electron/dist/electron.exe'), ['.', '--remote-debugging-port=9361', ...(process.env.EXTRA_ARGS ? process.env.EXTRA_ARGS.split(' ') : [])], {
   cwd: path.join(ROOT, 'desktop'), env: { ...process.env, PERFUMO_PROFILE: PROFILE }, stdio: 'ignore',
 });
 let ws, id = 0;

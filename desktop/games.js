@@ -156,14 +156,34 @@ async function detectGame(app, listIn) {
 
 /** procura a cada 15 s e avisa só quando muda */
 /** procura a cada 6 s (jogo e música) e avisa só quando muda */
+/** procwatch.exe: um processo leve que lista as janelas a cada 5 s (sem abrir PowerShell toda hora) */
+function startProcwatch(app, onList) {
+  const exe = app.isPackaged ? path.join(process.resourcesPath, 'procwatch.exe') : path.join(__dirname, 'procwatch.exe');
+  if (!fs.existsSync(exe)) return false;
+  const { spawn } = require('node:child_process');
+  const p = spawn(exe, ['5'], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+  let buf = '';
+  p.stdout.setEncoding('utf8');
+  p.stdout.on('data', (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i); buf = buf.slice(i + 1);
+      try { onList(JSON.parse(line)); } catch {}
+    }
+  });
+  app.on('will-quit', () => { try { p.stdin.end(); p.kill(); } catch {} });
+  return true;
+}
+
 function watchGames(app, onChange, onMusic) {
   if (process.platform !== 'win32') return;
   let last = null, lastMusic = null, busy = false;
-  const tick = async () => {
+  const tick = async (given) => {
     if (busy) return;
     busy = true;
     try {
-      const list = await listWindows();
+      const list = given || (await listWindows());
       const g = await detectGame(app, list).catch(() => null);
       const k = g?.key || null;
       if (k !== last) { last = k; onChange(g); }
@@ -172,8 +192,9 @@ function watchGames(app, onChange, onMusic) {
       if (mk !== lastMusic) { lastMusic = mk; onMusic?.(m); }
     } finally { busy = false; }
   };
+  if (startProcwatch(app, (list) => tick(list))) return;
   tick();
-  setInterval(tick, 6000);
+  setInterval(tick, 15000); // sem o procwatch: PowerShell, mas bem mais espaçado
 }
 
 module.exports = { watchGames, detectGame, detectMusic };

@@ -21,7 +21,25 @@ function App() {
 
 applyTheme();
 // janela sem foco (jogando) ou escondida: pausa toda animação e tira a refração do vidro -> CPU perto de zero
-const setIdle = () => document.documentElement.classList.toggle('idle', document.hidden || !document.hasFocus());
+const setIdle = () => {
+  const idle = document.hidden || !document.hasFocus();
+  if (idle === document.documentElement.classList.contains('idle')) return;
+  document.documentElement.classList.toggle('idle', idle);
+  // GIFs e vídeos do chat: pausam (vídeo) ou viram foto parada (GIF) enquanto você não está olhando
+  for (const v of document.querySelectorAll('.link-media, .embed video, .gif-item video')) if (v.tagName === 'VIDEO') { if (idle) v.pause(); else v.play().catch(() => {}); }
+  for (const img of document.querySelectorAll('.link-media img, .att-img img, .gif-item img')) {
+    if (idle) {
+      if (!img.complete || !img.naturalWidth || img.dataset.live) continue;
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        img.dataset.live = img.src;
+        img.src = c.toDataURL('image/webp', 0.8);
+      } catch {}
+    } else if (img.dataset.live) { img.src = img.dataset.live; delete img.dataset.live; }
+  }
+};
 addEventListener('focus', setIdle);
 addEventListener('blur', setIdle);
 document.addEventListener('visibilitychange', setIdle);
@@ -32,6 +50,12 @@ document.documentElement.classList.toggle('native', isNativeApp);
 if (window.perfumolandiaDesktop) {
   document.documentElement.classList.add('desktop-app');
   window.perfumolandiaDesktop.setPttKey(S.settings.pttKey);
+  const upd = (v) => v && import('./store.js').then(({ setUI }) => setUI({ updateReady: v }));
+  window.perfumolandiaDesktop.onUpdateReady?.(upd);
+  window.perfumolandiaDesktop.updateReady?.().then(upd);
+  window.perfumolandiaDesktop.gpuStatus?.().then((g) => {
+    if (g && !/^enabled/.test(g.gpu_compositing || '')) document.documentElement.classList.add('nogpu');
+  });
   window.perfumolandiaDesktop.onGame?.((g) => api.setMyGame(g));
   window.perfumolandiaDesktop.getGame?.().then((g) => g && api.setMyGame(g));
   window.perfumolandiaDesktop.onMusic?.((m) => api.setMyMusic(m));

@@ -121,7 +121,8 @@ jobs:
         run: |
           & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" -nologo -optimize -platform:x64 -target:exe -out:audiocap.exe native\audiocap.cs
           & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" -nologo -optimize -platform:x64 -target:exe -out:inputctl.exe native\inputctl.cs
-          if (!(Test-Path audiocap.exe) -or !(Test-Path inputctl.exe)) { exit 1 }
+          & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" -nologo -optimize -platform:x64 -target:exe -out:procwatch.exe native\procwatch.cs
+          if (!(Test-Path audiocap.exe) -or !(Test-Path inputctl.exe) -or !(Test-Path procwatch.exe)) { exit 1 }
       - name: instalador Windows
         working-directory: desktop
         shell: bash

@@ -6,6 +6,8 @@ ipcRenderer.on('ptt', (e, down) => pttCb?.(down));
 let gameCb = null;
 const sysCbs = new Map();
 let musicCb = null;
+let updCb = null;
+ipcRenderer.on('update-ready', (e, v) => updCb?.(v));
 let rcStopCb = null;
 ipcRenderer.on('rc-stop', () => rcStopCb?.());
 ipcRenderer.on('music', (e, m) => musicCb?.(m));
@@ -24,6 +26,10 @@ contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
   getAutostart: () => ipcRenderer.invoke('autostart:get'),
   setAutostart: (on) => ipcRenderer.invoke('autostart:set', !!on),
   version: () => ipcRenderer.invoke('app:version'),
+  gpuStatus: () => ipcRenderer.invoke('gpu:status'),
+  updateReady: () => ipcRenderer.invoke('update:get'),
+  onUpdateReady: (cb) => { updCb = cb; },
+  installUpdate: () => ipcRenderer.invoke('update:install'),
   onPtt: (cb) => { pttCb = cb; },
   getGame: () => ipcRenderer.invoke('game:get'),
   getInvite: () => ipcRenderer.invoke('invite:get'),

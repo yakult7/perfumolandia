@@ -31,6 +31,7 @@ export function Shell() {
     <${IncomingCall} />
     <${RemoteLayer} />
     <${ProfilePopover} />
+    <${UpdatePill} />
     ${menu ? html`<${GlassMenu} key=${menu.key} menu=${menu} onClose=${closeMenu} />` : null}
     ${audioBlocked ? html`<button class="gbtn primary audio-unlock" onClick=${rtc.unlockAudio}><${Icon} n="volume" /> Toque para ativar o som da chamada</button>` : null}
     <${Toasts} />
@@ -46,7 +47,7 @@ function DesktopShell() {
   const groupId = useS((s) => (s.groups[s.view.channelId] ? s.view.channelId : null));
   const connected = useS((s) => s.connected);
   const dmOther = useS((s) => { const d = s.dms[s.view.channelId]; return d ? d.members.find((m) => m !== s.uid) : null; });
-  const dmProfile = useS((s) => s.settings.dmProfile !== false);
+  const dmProfile = useS((s) => s.settings.dmProfile !== false && s.call?.roomId !== s.view.channelId);
   return html`
     <div class="shell desk">
       ${!connected ? html`<div class="offline-pill lg">Reconectando…</div>` : null}
@@ -319,4 +320,14 @@ function MobileServers() {
         <${VoiceDock} />
       </div>
     </div>`;
+}
+
+/** versão nova baixada com o app aberto: botão para reiniciar (ou instala sozinha ao fechar) */
+function UpdatePill() {
+  const v = useS((s) => s.ui.updateReady);
+  const inCall = useS((s) => !!s.call);
+  if (!v) return null;
+  return html`<button class="update-pill lg" title=${inCall ? 'Saia da chamada antes, ou ela instala sozinha quando você fechar o app' : 'Reinicia em 2 segundos já atualizado'}
+    onClick=${() => { if (!inCall || confirm('Reiniciar agora vai te tirar da chamada. Continuar?')) window.perfumolandiaDesktop?.installUpdate?.(); }}>
+    <${Icon} n="download" s=${14} /> Versão ${v} pronta · Reiniciar</button>`;
 }

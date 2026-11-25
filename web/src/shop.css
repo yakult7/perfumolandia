@@ -310,3 +310,21 @@ html.scrolling .lg, html.scrolling .gbtn, html.scrolling .lens,
 .stage .lg, .stage .gbtn, .theater .lg, .theater .gbtn, .rc-view .lg, .rc-view .gbtn {
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important; -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important;
 }
+
+/* app em segundo plano (jogo na frente): nenhum vidro (só a cor translúcida), nada animando, nada redesenhando */
+html.idle .lg, html.idle .gbtn, html.idle .lens, html.idle .material, html.idle .surface, html.idle .sheet, html.idle .pcard-panel, html.idle .pp-tool {
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+}
+html.idle .lg, html.idle .gbtn:not(.primary):not(.ok):not(.on):not(.off):not(.danger) { background: var(--glass-tint-strong); }
+/* PC sem aceleração de vídeo: sem desfoque/refração nunca (é o que mais pesa na CPU desses PCs) */
+html.nogpu *, html.nogpu *::before, html.nogpu *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html.nogpu .lg, html.nogpu .gbtn:not(.primary):not(.ok):not(.on):not(.off):not(.danger) { background: var(--glass-tint-strong); }
+
+/* quem está assistindo a transmissão */
+.tile-name.viewers { gap: 5px; }
+.viewer-avs { display: inline-flex; margin-left: 2px; }
+.viewer-avs .avatar { margin-left: -5px; box-shadow: 0 0 0 1.5px #111; }
+.viewer-avs .avatar:first-child { margin-left: 0; }
+.tile.screen:not(:has(video)) { cursor: pointer; }
+
+.update-pill { position: fixed; z-index: 150; left: 50%; bottom: 14px; translate: -50% 0; display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 999px; font-weight: 650; font-size: 13px; color: #fff; --glass-tint: color-mix(in srgb, var(--ok) 70%, transparent); }

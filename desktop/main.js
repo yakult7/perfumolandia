@@ -5,7 +5,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
-const { checkBeforeStart, backgroundChecks } = require('./updater.js');
+const { checkBeforeStart, backgroundChecks, updateReady, installNow } = require('./updater.js');
 const { watchGames } = require('./games.js');
 
 const DEV_URL = process.env.PERFUMO_DEV_URL; // ex.: http://localhost:5173 durante o desenvolvimento
@@ -21,7 +21,7 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 // chamada não pode engasgar quando a janela está minimizada ou atrás do jogo
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
-app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+// (sem 'disable-backgrounding-occluded-windows': coberta pelo jogo ou minimizada, a janela para de ser desenhada; a chamada continua)
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
@@ -167,7 +167,7 @@ app.whenReady().then(() => {
     if (autostarted) splash?.destroy();
     if (!process.env.PERFUMO_HIDDEN) createTray();
     setupGlobalPtt();
-    backgroundChecks();
+    backgroundChecks((v) => win?.webContents.send('update-ready', v));
     // status "Jogando ...": manda o jogo aberto para o app web
     watchGames(app, (g) => { currentGame = g; win?.webContents.send('game', g); }, (m) => { currentMusic = m; win?.webContents.send('music', m); });
   });
@@ -188,6 +188,10 @@ ipcMain.handle('autostart:set', (e, on) => {
   return !!on;
 });
 ipcMain.handle('app:version', () => app.getVersion());
+ipcMain.handle('update:get', () => updateReady());
+ipcMain.handle('update:install', () => { quitting = true; installNow(); });
+// PC sem aceleração de vídeo (o Windows desenha tudo na CPU): o app liga o modo leve sozinho
+ipcMain.handle('gpu:status', () => { try { return app.getGPUFeatureStatus(); } catch { return null; } });
 
 // ---------- captura de som por programa (audiocap.exe, loopback por processo do Windows) ----------
 // 'screen': tela inteira = tudo menos o Perfumolandia; janela = só o programa dela (como o Discord).
