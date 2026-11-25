@@ -342,7 +342,8 @@ addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPro
 export function InstallBanner() {
   const [hidden, setHidden] = useState(() => { try { return localStorage.getItem('rs.installHidden') === '1'; } catch { return false; } });
   const ready = useS((s) => s.ready);
-  if (hidden || isStandalone || isNativeApp || window.perfumolandiaDesktop || !ready) return null;
+  const inCall = useS((s) => !!s.call && s.ui.callOpen !== false);
+  if (hidden || inCall || isStandalone || isNativeApp || window.perfumolandiaDesktop || !ready) return null;
   const isMobile = /Android|iPhone|iPad|iPod/.test(navigator.userAgent) || isIOS;
   if (!isMobile) return null;
   const dismiss = () => { setHidden(true); try { localStorage.setItem('rs.installHidden', '1'); } catch {} };
