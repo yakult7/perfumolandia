@@ -7,6 +7,10 @@ import { openDM, callDM, run, safe, isUnread, statusOf, dmPartner, openModal, op
 import { Avatar, GBtn, Empty, STATUS_LABEL, GroupAvatar, Activity } from './common.js';
 import { userMenu, nameOf } from './usermenu.js';
 import { plateOf } from '../nameplates.js';
+import { useNow } from './common.js';
+import { openProfile } from './popover.js';
+import { roomName } from '../actions.js';
+import * as rtc from '../rtc.js';
 
 export function Friends({ mobile }) {
   const tab = useS((s) => s.view.homeTab);
@@ -29,7 +33,8 @@ export function Friends({ mobile }) {
         ${mobile ? html`<h1>Amigos</h1>` : html`<div class="top-title"><${Icon} n="users" s=${20} /><b>Amigos</b></div>`}
         <${GlassBar} items=${items} value=${tab} onChange=${setTab} class="seg-bar" itemClass="seg-item" />
       </header>
-      <div class="friends-body">
+      ${!mobile ? html`<${ActiveNow} />` : null}
+      <div class=${cx('friends-body', !mobile && 'with-active')}>
         ${tab === 'add' ? html`<${AddFriend} />` : list.length
           ? html`<div class="flist">
               <div class="flist-head">${{ online: 'Online', all: 'Todos os amigos', pending: 'Pendentes' }[tab]} — ${list.length}</div>
@@ -41,6 +46,58 @@ export function Friends({ mobile }) {
               <button class="gbtn primary" onClick=${() => setTab('add')}><${Icon} n="userPlus" s=${18} /> Adicionar amigo</button>
             <//>`}
       </div>
+    </div>`;
+}
+
+/** coluna "Ativo agora" (como no Discord): amigos jogando, ouvindo música ou em chamada */
+function ActiveNow() {
+  const rels = useS((s) => s.relations);
+  const games = useS((s) => s.games);
+  const musics = useS((s) => s.musics);
+  const voice = useS((s) => s.voice);
+  useNow(30000);
+  const friends = Object.values(rels).filter((r) => r.status === 'accepted').map((r) => (r.from === S.uid ? r.to : r.from));
+  const inRoom = {};
+  for (const [room, parts] of Object.entries(voice)) for (const p of parts) if (!inRoom[p.userId]) inRoom[p.userId] = { room, parts };
+  const cards = friends.filter((uid) => games[uid] || musics[uid] || inRoom[uid])
+    .sort((a, b) => (games[b]?.since || 0) - (games[a]?.since || 0));
+  return html`
+    <aside class="active-now">
+      <h3>Ativo agora</h3>
+      ${!cards.length ? html`<div class="an-empty"><b>Está tranquilo por enquanto…</b><small>Quando um amigo começar a jogar, ouvir música ou entrar numa chamada, aparece aqui.</small></div>`
+        : cards.map((uid) => html`<${ActiveCard} key=${uid} uid=${uid} game=${games[uid]} music=${musics[uid]} call=${inRoom[uid]} />`)}
+    </aside>`;
+}
+const ago = (ts) => { if (!ts) return ''; const m = Math.max(0, Math.floor((Date.now() - ts) / 60000)); return m < 1 ? 'agora' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}`; };
+function ActiveCard({ uid, game, music, call }) {
+  const u = useS((s) => s.users[uid]);
+  if (!u) return null;
+  const sub = game ? `${game.name}${game.since ? ' – ' + ago(game.since) : ''}` : music ? `Ouvindo ${music.app || 'Spotify'}` : 'Em uma chamada';
+  const canJoin = call && (S.dms[call.room] || S.groups[call.room] || Object.values(S.servers).some((sv) => sv.channels.some((c) => c.id === call.room)));
+  return html`
+    <div class="an-card">
+      <button class="an-head" onClick=${(e) => openProfile(uid, e)} onContextMenu=${(e) => userMenu(e, uid)}>
+        <${Avatar} id=${uid} size=${36} status />
+        <span class="an-names"><b>${nameOf(uid, u.displayName)}</b><small>${sub}</small></span>
+        ${game?.img ? html`<img class=${cx('an-mini', game.wide && 'wide')} src=${game.img} alt="" />` : music?.art ? html`<img class="an-mini" src=${music.art} alt="" />` : null}
+      </button>
+      ${game ? html`
+        <div class="an-body">
+          ${game.img ? html`<img class=${cx('an-art', game.wide && 'wide')} src=${game.img} alt="" />` : html`<span class="an-art ph"><${Icon} n="game" s=${20} /></span>`}
+          <span class="an-info"><b>${game.name}</b><small>${game.since ? ago(game.since) + ' decorridos' : 'Jogando agora'}</small></span>
+        </div>` : null}
+      ${music ? html`
+        <div class="an-body">
+          ${music.art ? html`<img class="an-art" src=${music.art} alt="" />` : html`<span class="an-art ph"><${Icon} n="music" s=${20} /></span>`}
+          <span class="an-info"><b>${music.title}</b><small>${music.artist}</small></span>
+        </div>` : null}
+      ${call ? html`
+        <div class="an-body">
+          <span class="an-art ph"><${Icon} n="phone" s=${18} /></span>
+          <span class="an-info"><b>${roomName(call.room)}</b><small>${call.parts.length} ${call.parts.length === 1 ? 'pessoa' : 'pessoas'}</small></span>
+          <span class="an-avs">${call.parts.slice(0, 3).map((p) => html`<${Avatar} key=${p.sid} id=${p.userId} size=${20} />`)}</span>
+          ${canJoin && S.call?.roomId !== call.room ? html`<button class="gbtn sm ok" onClick=${() => { rtc.join(call.room); }}>Entrar</button>` : null}
+        </div>` : null}
     </div>`;
 }
 

@@ -188,6 +188,14 @@ ipcMain.handle('autostart:set', (e, on) => {
   return !!on;
 });
 ipcMain.handle('app:version', () => app.getVersion());
+// contador vermelho no ícone da barra de tarefas (conversas não lidas + pedidos), como no Discord
+ipcMain.on('badge', (e, n, dataUrl) => {
+  if (!win || process.platform !== 'win32') return;
+  try {
+    if (n > 0 && dataUrl) win.setOverlayIcon(nativeImage.createFromDataURL(dataUrl), `${n} notificaç${n === 1 ? 'ão' : 'ões'}`);
+    else win.setOverlayIcon(null, '');
+  } catch {}
+});
 ipcMain.handle('update:get', () => updateReady());
 ipcMain.handle('update:install', () => { quitting = true; installNow(); });
 // PC sem aceleração de vídeo (o Windows desenha tudo na CPU): o app liga o modo leve sozinho

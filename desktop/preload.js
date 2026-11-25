@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
   getAutostart: () => ipcRenderer.invoke('autostart:get'),
   setAutostart: (on) => ipcRenderer.invoke('autostart:set', !!on),
   version: () => ipcRenderer.invoke('app:version'),
+  setBadge: (n, dataUrl) => ipcRenderer.send('badge', Number(n) || 0, String(dataUrl || '')),
   gpuStatus: () => ipcRenderer.invoke('gpu:status'),
   metrics: () => ipcRenderer.invoke('app:metrics'),
   updateReady: () => ipcRenderer.invoke('update:get'),

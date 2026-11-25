@@ -63,6 +63,33 @@ addEventListener('blur', setIdle);
 document.addEventListener('visibilitychange', setIdle);
 setIdle();
 subscribe(setIdle);
+
+// contador no ícone da barra de tarefas: conversas/grupos não lidos + pedidos de amizade recebidos
+if (window.perfumolandiaDesktop?.setBadge) {
+  let lastBadge = -1;
+  const badgeImg = (n) => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const g = c.getContext('2d');
+    g.fillStyle = '#f23f43';
+    g.beginPath(); g.arc(16, 16, 15, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#fff';
+    g.font = `bold ${n > 9 ? 17 : 21}px Segoe UI, Arial, sans-serif`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(n > 9 ? '9+' : String(n), 16, 17);
+    return c.toDataURL('image/png');
+  };
+  const updateBadge = () => {
+    if (!S.ready) return;
+    const unread = [...Object.keys(S.dms), ...Object.keys(S.groups)].filter((id) => S.lastIds[id] && S.readIds[id] !== S.lastIds[id] && S.view.channelId !== id && !S.settings.mutedUsers?.[S.dms[id]?.members?.find((m) => m !== S.uid)]).length;
+    const pending = Object.values(S.relations).filter((r) => r.status === 'pending' && r.to === S.uid).length;
+    const n = unread + pending;
+    if (n === lastBadge) return;
+    lastBadge = n;
+    window.perfumolandiaDesktop.setBadge(n, n ? badgeImg(n) : '');
+  };
+  subscribe(updateBadge);
+}
 // a 1.10 trocava PCs de 4 núcleos para a supressão básica e o áudio piorou: volta todo mundo que foi trocado para a de IA
 if (!localStorage.getItem('rs.noiseFix') ) {
   if (localStorage.getItem('rs.noiseChosen') && S.settings.noiseMode === 'basic') setSettings({ noiseMode: 'smart' });
