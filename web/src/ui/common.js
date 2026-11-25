@@ -6,15 +6,17 @@ import { optimizeImage } from '../media.js';
 
 export const initials = (name = '?') => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
-export function Avatar({ id, size = 36, status = false, ring = false, user: u0 }) {
+export function Avatar({ id, size = 36, status = false, ring = false, user: u0, deco: decoOverride }) {
   const u = useS((s) => u0 || s.users[id]);
   const st = useS((s) => (status ? statusOf(s, id) : null));
   const speaking = useS((s) => (ring ? !!s.speaking[id] : false));
   const name = u?.displayName || '?';
+  const deco = decoOverride !== undefined ? decoOverride : u?.decoration;
   return html`
     <span class=${cx('avatar', speaking && 'speaking')} style=${`--s:${size}px;--c:${u?.color || '#7c5cff'}`}>
       ${u?.avatar ? html`<img src=${u.avatar} alt="" loading="lazy" draggable="false" />` : html`<b>${initials(name)}</b>`}
       ${status ? html`<i class=${'dot st-' + st} title=${STATUS_LABEL[st]}></i>` : null}
+      ${deco && size >= 24 ? html`<i class=${'deco deco-' + deco} aria-hidden="true"></i>` : null}
     </span>`;
 }
 export const STATUS_LABEL = { online: 'Online', idle: 'Ausente', dnd: 'Não perturbe', invisible: 'Invisível', offline: 'Offline' };
@@ -23,6 +25,8 @@ export const STATUS_LABEL = { online: 'Online', idle: 'Ausente', dnd: 'Não pert
 const hideImg = (e) => { e.target.style.display = 'none'; };
 export function Activity({ id, fallback }) {
   const g = useS((s) => s.games[id] || null);
+  const m = useS((s) => s.musics[id] || null);
+  if (!g && m) return html`<span class="act-line music">${m.art ? html`<img src=${m.art} alt="" class="act-ico" onError=${hideImg} />` : html`<${Icon} n="music" s=${12} />`}<span class="act-txt">Ouvindo <b>${m.title}</b></span></span>`;
   if (!g) return fallback;
   return html`<span class="act-line">${g.img ? html`<img src=${g.img} alt="" class=${cx('act-ico', g.wide && 'wide')} onError=${hideImg} />` : html`<${Icon} n="game" s=${12} />`}<span class="act-txt">Jogando <b>${g.name}</b></span></span>`;
 }
@@ -30,8 +34,16 @@ export function Activity({ id, fallback }) {
 /** cartão "Jogando agora" do perfil: capa do jogo, nome e há quanto tempo */
 export function GameCard({ id }) {
   const g = useS((s) => s.games[id] || null);
+  const m = useS((s) => s.musics[id] || null);
   useNow(30000);
-  if (!g) return null;
+  const music = m ? html`
+    <div class="pcard-section"><small>Ouvindo no ${m.app || 'Spotify'}</small>
+      <div class="game-card music">
+        ${m.art ? html`<img src=${m.art} alt="" onError=${hideImg} />` : html`<span class="game-ph"><${Icon} n="music" s=${22} /></span>`}
+        <div><b>${m.title}</b><span class="muted">${m.artist}</span></div>
+      </div>
+    </div>` : null;
+  if (!g) return music;
   const min = Math.max(0, Math.floor((Date.now() - (g.since || Date.now())) / 60000));
   const tempo = min < 1 ? 'agora mesmo' : min < 60 ? `há ${min} min` : `há ${Math.floor(min / 60)} h ${min % 60} min`;
   return html`
@@ -40,7 +52,7 @@ export function GameCard({ id }) {
         ${g.img ? html`<img src=${g.img} alt="" onError=${hideImg} />` : html`<span class="game-ph"><${Icon} n="game" s=${22} /></span>`}
         <div><b>${g.name}</b><span class="muted">${tempo}</span></div>
       </div>
-    </div>`;
+    </div>${music}`;
 }
 
 /** botão de vidro redondo/pílula */

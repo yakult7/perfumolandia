@@ -1,4 +1,5 @@
 import './app.css';
+import './shop.css';
 import { html, render } from './lib.js';
 import { useS, S, subscribe } from './store.js';
 import * as api from './api.js';
@@ -25,6 +26,8 @@ if (window.perfumolandiaDesktop) {
   window.perfumolandiaDesktop.setPttKey(S.settings.pttKey);
   window.perfumolandiaDesktop.onGame?.((g) => api.setMyGame(g));
   window.perfumolandiaDesktop.getGame?.().then((g) => g && api.setMyGame(g));
+  window.perfumolandiaDesktop.onMusic?.((m) => api.setMyMusic(m));
+  window.perfumolandiaDesktop.getMusic?.().then((m) => m && api.setMyMusic(m));
 }
 render(html`<${App} />`, document.getElementById('app'));
 // convite por link: ?convite=CODIGO (navegador/celular) ou perfumolandia://convite/CODIGO (app do PC)
@@ -36,7 +39,7 @@ import('./actions.js').then(({ queueInvite, tryPendingInvite }) => {
   subscribe(tryPendingInvite);
 });
 // acesso para diagnóstico pelo console (F12)
-Promise.all([import('./rtc.js'), import('./actions.js'), import('./store.js'), import('./media.js')]).then(([rtc, actions, store, media]) => { window.__p = { api, rtc, S, actions, store, media }; });
+Promise.all([import('./rtc.js'), import('./actions.js'), import('./store.js'), import('./media.js'), import('./remote.js')]).then(([rtc, actions, store, media, remote]) => { window.__p = { api, rtc, S, actions, store, media, remote }; });
 api.start().catch((e) => {
   console.error(e);
   import('./store.js').then(({ set }) => set((s) => { s.booting = false; }));

@@ -12,8 +12,11 @@ function useCallModel() {
   const call = useS((s) => s.call);
   const parts = useS((s) => (s.call ? s.voice[s.call.roomId] || [] : []));
   if (!call) return null;
-  const meP = { sid: api.clientId, userId: S.uid, me: true, state: { muted: call.muted, deafened: call.deafened, camera: rtc.hasCam(), screen: rtc.isSharing(), screenLabel: call.screenLabel } };
+  const myMusic = call.music && S.myMusic ? { title: S.myMusic.title, artist: S.myMusic.artist, art: S.myMusic.art } : null;
+  const meP = { sid: api.clientId, userId: S.uid, me: true, state: { muted: call.muted, deafened: call.deafened, camera: rtc.hasCam(), screen: rtc.isSharing(), screenLabel: call.screenLabel, music: myMusic } };
   const all = [meP, ...parts.filter((p) => p.sid !== api.clientId)];
+  // música compartilhada entra como mais um "participante"
+  const bots = all.filter((p) => p.state?.music?.title).map((p) => ({ sid: p.sid + ':music', owner: p, music: p.state.music }));
   const media = [];
   for (const p of all) {
     if (p.state?.screen) media.push({ id: p.sid + ':screen', p, kind: 'screen' });
@@ -23,7 +26,7 @@ function useCallModel() {
   let focus = call.focus && media.find((t) => t.p.sid === call.focus.sid && t.kind === call.focus.kind);
   if (!focus && call.focus !== 'grid') focus = media.find((t) => t.kind === 'screen') || null;
   const noCam = all.filter((p) => !p.state?.camera);
-  return { call, all, media, focus, noCam };
+  return { call, all, media, focus, noCam, bots };
 }
 
 export function CallStage({ mobile, docked, collapsed, onCollapse, onExpand, expanded }) {
@@ -32,7 +35,7 @@ export function CallStage({ mobile, docked, collapsed, onCollapse, onExpand, exp
   const showStats = useS((s) => s.settings.showStats);
   useNow(1000);
   if (!m) return null;
-  const { call, all, media, focus, noCam } = m;
+  const { call, all, media, focus, noCam, bots } = m;
   const sv = serverOfRoom(call.roomId);
   const others = focus ? media.filter((t) => t !== focus) : media;
   const cols = others.length <= 1 ? 1 : others.length <= 4 ? 2 : 3;
@@ -46,7 +49,7 @@ export function CallStage({ mobile, docked, collapsed, onCollapse, onExpand, exp
           <small>${call.connecting ? 'Conectando…' : outgoing ? 'Chamando…' : fmtDur(Date.now() - call.joinedAt)} · ${all.length} ${all.length === 1 ? 'pessoa' : 'pessoas'}</small>
         </div>
         ${collapsed ? html`<div class="row" style="gap:4px">${all.map((p) => html`<${Avatar} key=${p.sid} id=${p.userId} size=${24} ring />`)}</div>`
-          : media.length && noCam.length ? html`<div class="people-strip">${noCam.map((p) => html`<${MiniPerson} key=${p.sid} p=${p} />`)}</div>` : null}
+          : media.length && (noCam.length || bots.length) ? html`<div class="people-strip">${noCam.map((p) => html`<${MiniPerson} key=${p.sid} p=${p} />`)}${bots.map((b) => html`<${MusicPerson} key=${b.sid} b=${b} mini />`)}</div>` : null}
         ${!mobile && !collapsed ? html`<${GBtn} icon="activity" title="Estatísticas de vídeo" class=${cx('icon-only sm', showStats && 'on')} onClick=${() => setSettings({ showStats: !showStats })} size=${15} />` : null}
         ${focus && media.length > 1 && !collapsed ? html`<${GBtn} icon="menu" title="Ver todos em grade" class="icon-only sm" onClick=${() => rtc.setFocus('grid')} size=${15} />` : null}
         ${docked ? html`
@@ -56,7 +59,7 @@ export function CallStage({ mobile, docked, collapsed, onCollapse, onExpand, exp
       ${collapsed ? null : html`
         <div class="stage-body">
           ${media.length === 0 ? html`
-            <div class="people">${all.map((p) => html`<${Person} key=${p.sid} p=${p} size=${docked ? 64 : mobile ? 84 : 96} />`)}</div>`
+            <div class="people">${all.map((p) => html`<${Person} key=${p.sid} p=${p} size=${docked ? 64 : mobile ? 84 : 96} />`)}${bots.map((b) => html`<${MusicPerson} key=${b.sid} b=${b} size=${docked ? 64 : mobile ? 84 : 96} />`)}</div>`
           : focus ? html`
             <div class="stage-main"><${Tile} t=${focus} big /></div>
             ${others.length ? html`<div class="stage-side">${others.map((t) => html`<${Tile} key=${t.id} t=${t} />`)}</div>` : null}`
@@ -122,6 +125,23 @@ function Person({ p, size }) {
         ${st.screen ? html`<span class="av-live live">AO VIVO</span>` : null}
       </div>
       <b>${u?.displayName}${p.me ? ' (você)' : ''}</b>
+    </div>`;
+}
+/** a música compartilhada: capa girando como disco; clicar silencia/ativa só para você */
+function MusicPerson({ b, size = 64, mini }) {
+  const owner = useS((s) => s.users[b.owner.userId]);
+  const muted = useS((s) => !!s.settings.musicMuted);
+  const toggle = () => { setSettings({ musicMuted: !muted }); rtc.applyVolumes(); };
+  const disc = html`<span class=${cx('music-disc', muted && 'paused')} style=${`--s:${mini ? 30 : size}px`}>
+      ${b.music.art ? html`<img src=${b.music.art} alt="" />` : html`<${Icon} n="music" s=${mini ? 14 : 26} />`}</span>`;
+  if (mini) return html`<button class="music-mini" title=${`${b.music.title} — ${b.music.artist} (música de ${owner?.displayName})`} onClick=${toggle}>${disc}</button>`;
+  return html`
+    <div class="person music-person" title=${b.owner.me ? 'Sua música' : muted ? 'Clique para ouvir' : 'Clique para silenciar só para você'}>
+      <button class="av-wrap" onClick=${b.owner.me ? null : toggle}>${disc}
+        ${muted && !b.owner.me ? html`<span class="av-mute"><${Icon} n="volumeOff" s=${13} /></span>` : null}
+      </button>
+      <b>🎵 ${b.music.title}</b>
+      <small class="muted">${b.music.artist} · de ${b.owner.me ? 'você' : owner?.displayName}</small>
     </div>`;
 }
 function MiniPerson({ p }) {
@@ -259,6 +279,8 @@ function StatsBadge({ sid, kind }) {
 function Controls({ mobile }) {
   const call = useS((s) => s.call && { muted: s.call.muted, deafened: s.call.deafened, v: s.call.v });
   const ptt = useS((s) => s.settings.inputMode === 'ptt');
+  const myMusic = useS((s) => s.myMusic);
+  const musicOn = useS((s) => !!s.call?.music);
   const pttOn = useS((s) => s.ui.ptt);
   if (!call) return null;
   const cam = rtc.hasCam();
@@ -272,6 +294,7 @@ function Controls({ mobile }) {
       ${cam && mobile ? html`<${GBtn} icon="flip" title="Virar câmera" class="icon-only ctl" onClick=${rtc.flipCamera} size=${19} />` : null}
       ${screenAvailable ? html`<${GBtn} icon=${share ? 'screenOff' : 'screen'} title=${share ? 'Parar transmissão' : 'Transmitir tela'} class=${cx('icon-only ctl', share && 'on')}
         onClick=${() => (share ? (nativeScreen.active ? nativeScreen.stop() : rtc.stopScreen()) : openModal('screenShare'))} size=${19} />` : null}
+      ${isElectron && (myMusic || musicOn) ? html`<${GBtn} icon="music" title=${musicOn ? 'Parar de compartilhar a música' : `Compartilhar música: ${myMusic.title}`} class=${cx('icon-only ctl', musicOn && 'on')} onClick=${() => (musicOn ? rtc.stopMusic() : rtc.startMusic())} size=${19} />` : null}
       ${!mobile ? html`<${GBtn} icon="settings" title="Configurações de voz e vídeo" class="icon-only ctl" onClick=${() => openModal('settings', { tab: 'voice' })} size=${19} />` : null}
       <${GBtn} icon="hangup" title="Sair da chamada" class="icon-only ctl danger" onClick=${() => { cancelOutgoing(); rtc.leave(); setUI({ callExpanded: false, callCollapsed: false }); }} size=${19} />
     </div>`;

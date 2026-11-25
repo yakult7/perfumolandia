@@ -12,6 +12,7 @@ import { Chat } from './chat.js';
 import { CallStage, MiniCall, Theater } from './call.js';
 import { Friends, DMList } from './home.js';
 import { Modals, IncomingCall, InstallBanner } from './modals.js';
+import { RemoteLayer } from './remote.js';
 import { MePage } from './settings.js';
 import logo from '../logo.png';
 
@@ -24,6 +25,7 @@ export function Shell() {
     <${Theater} />
     <${Modals} />
     <${IncomingCall} />
+    <${RemoteLayer} />
     ${menu ? html`<${GlassMenu} key=${menu.key} menu=${menu} onClose=${closeMenu} />` : null}
     ${audioBlocked ? html`<button class="gbtn primary audio-unlock" onClick=${rtc.unlockAudio}><${Icon} n="volume" /> Toque para ativar o som da chamada</button>` : null}
     <${Toasts} />

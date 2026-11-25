@@ -7,6 +7,9 @@ import { md, isBigEmoji } from '../markdown.js';
 import { sendMessage, loadMessages, markRead, openMenu, openModal, back, run, safe, toast, dmPartner, callDM, statusOf, groupName } from '../actions.js';
 import { Avatar, GBtn, Spinner, Empty, STATUS_LABEL, GroupAvatar, Activity } from './common.js';
 import { CallDock } from './call.js';
+import { GifPicker, LinkMedia, isLinkMedia } from './gifpicker.js';
+import { reportShare } from '../gifs.js';
+import { requestControl } from '../remote.js';
 import { readableColor, effectiveMode } from '../theme.js';
 
 export const QUICK = ['👍', '❤️', '😂', '🔥', '😮', '😢'];
@@ -36,6 +39,7 @@ export function Chat({ cid, mobile }) {
   }, [cid]);
 
   const other = dm ? dmPartner(dm) : null;
+  const otherPc = useS((s) => !!(other && s.pcs[other.id]));
   const title = dm ? other.displayName : group ? groupName(group) : ch?.name;
   const direct = !!(dm || group);
   const startCall = async (video) => {
@@ -62,7 +66,8 @@ export function Chat({ cid, mobile }) {
           ${direct ? html`
             ${voiceHere && !callHere ? html`<button class="gbtn sm ok" onClick=${() => startCall(false)}><${Icon} n="phone" s=${14} /> Entrar</button>` : null}
             <${GBtn} icon="phone" title=${group ? 'Ligar para o grupo' : 'Ligar'} class="icon-only sm" onClick=${() => startCall(false)} size=${15} />
-            <${GBtn} icon="video" title="Chamada de vídeo" class="icon-only sm" onClick=${() => startCall(true)} size=${15} />` : null}
+            <${GBtn} icon="video" title="Chamada de vídeo" class="icon-only sm" onClick=${() => startCall(true)} size=${15} />
+            ${dm && otherPc ? html`<${GBtn} icon="remote" title="Controlar o PC (estilo AnyDesk; ele precisa permitir)" class="icon-only sm" onClick=${() => requestControl(other.id)} size=${15} />` : null}` : null}
           ${group ? html`<${GBtn} icon="more" title="Grupo" class="icon-only sm" onClick=${groupMenu} size=${15} />` : null}
           ${sv && !mobile ? html`<${GBtn} icon="users" title="Membros" class="icon-only sm" onClick=${() => setUI({ showMembers: !S.ui.showMembers })} size=${15} />` : null}
           ${sv ? html`<${GBtn} icon="userPlus" title="Convidar" class="icon-only sm" onClick=${() => openModal('invite', { id: sv.id })} size=${15} />` : null}
@@ -219,6 +224,7 @@ function TextMessage({ m, grouped, names, onReply, editing, setEditing }) {
               <time>${timeAgo(m.createdAt)}</time>
             </div>`}
           ${editing ? html`<${EditBox} m=${m} done=${() => setEditing(null)} />`
+            : m.content && isLinkMedia(m.content) ? html`<${LinkMedia} text=${m.content} />`
             : m.content ? html`<div class=${cx('msg-text', isBigEmoji(m.content) && 'big-emoji')} dangerouslySetInnerHTML=${{ __html: md(m.content, names) }}></div>` : null}
           ${m.editedAt && !editing ? html`<small class="edited">(editada)</small>` : null}
           ${m.attachments?.length ? html`<div class="atts">${m.attachments.map((a, i) => html`<${Attachment} key=${i} a=${a} />`)}</div>` : null}
@@ -286,6 +292,7 @@ function Composer({ cid, placeholder, reply, clearReply, members, onEditLast }) 
   const [files, setFiles] = useState([]);
   const [progress, setProgress] = useState(null);
   const [emoji, setEmoji] = useState(false);
+  const [gif, setGif] = useState(false);
   const [mention, setMention] = useState(null);
   const ta = useRef();
   const touch = matchMedia('(pointer: coarse)').matches;
@@ -361,6 +368,7 @@ function Composer({ cid, placeholder, reply, clearReply, members, onEditLast }) 
               ${u.id !== 'all' ? html`<${Avatar} id=${u.id} size=${26} />` : html`<${Icon} n="users" s=${20} />`}<b>${u.displayName}</b><small>@${u.username}</small>
             </button>`)}
         </div>` : null}
+      ${gif ? html`<${GifPicker} onClose=${() => setGif(false)} onPick=${(g) => { setGif(false); reportShare(g.slug); sendMessage(cid, g.send.url, [], reply?.id || null); clearReply(); }} />` : null}
       ${emoji ? html`<${EmojiPicker} onPick=${(em) => { const t = ta.current; const p = t.selectionStart ?? text.length; const v = text.slice(0, p) + em + text.slice(p); setText(v); t.value = v; t.focus(); }} onClose=${() => setEmoji(false)} />` : null}
       ${reply ? html`
         <div class="reply-bar lg">
@@ -385,7 +393,8 @@ function Composer({ cid, placeholder, reply, clearReply, members, onEditLast }) 
         <textarea ref=${ta} rows="1" value=${text} placeholder=${placeholder} onInput=${onInput} onKeyDown=${onKey}
           onPaste=${(e) => { if (e.clipboardData.files.length) { e.preventDefault(); addFiles(e.clipboardData.files); } }}
           enterkeyhint="send"></textarea>
-        <button class=${cx('gbtn icon-only sm', emoji && 'on')} title="Emoji" onClick=${() => setEmoji(!emoji)}><${Icon} n="smile" s=${17} /></button>
+        <button class=${cx('gbtn sm gif-btn', gif && 'on')} title="GIFs" onClick=${() => { setGif(!gif); setEmoji(false); }}>GIF</button>
+        <button class=${cx('gbtn icon-only sm', emoji && 'on')} title="Emoji" onClick=${() => { setEmoji(!emoji); setGif(false); }}><${Icon} n="smile" s=${17} /></button>
         <button class="gbtn icon-only sm primary send" title="Enviar" disabled=${(!text.trim() && !files.length) || progress != null} onClick=${send}><${Icon} n="send" s=${15} /></button>
       </div>
     </div>`;

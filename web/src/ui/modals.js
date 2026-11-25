@@ -3,6 +3,7 @@ import { useS, S, persist } from '../store.js';
 import { Icon } from '../icons.js';
 import * as api from '../api.js';
 import { inviteLink } from '../config.js';
+import { requestControl } from '../remote.js';
 import { closeModal, run, safe, go, toast, openDM, acceptCall, declineCall, callDM, statusOf, groupName, openModal } from '../actions.js';
 import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, STATUS_LABEL, GroupAvatar } from './common.js';
 import { ProfileCard } from './profile.js';
@@ -240,13 +241,15 @@ function Profile({ id }) {
   const rel = useS((s) => Object.values(s.relations).find((r) => (r.from === id && r.to === s.uid) || (r.to === id && r.from === s.uid)));
   if (!u) return null;
   const me = id === S.uid;
+  const pc = useS((s) => !!s.pcs[id]);
   return html`
     <${Modal} title="Perfil" class="profile-modal">
       <${ProfileCard} u=${u} status=${st}>
         ${me ? html`<button class="gbtn sm primary" onClick=${() => openModal('settings', { tab: 'account' })}><${Icon} n="edit" s=${14} /> Editar perfil</button>`
           : rel?.status === 'accepted' ? html`
             <button class="gbtn sm primary" onClick=${() => { closeModal(); openDM(id); }}><${Icon} n="message" s=${14} /> Mensagem</button>
-            <button class="gbtn sm" onClick=${async () => { closeModal(); const dm = await openDM(id); callDM(dm.id); }}><${Icon} n="phone" s=${14} /> Ligar</button>`
+            <button class="gbtn sm" onClick=${async () => { closeModal(); const dm = await openDM(id); callDM(dm.id); }}><${Icon} n="phone" s=${14} /> Ligar</button>
+            ${pc ? html`<button class="gbtn sm" title="Pede para controlar o PC dele (ele precisa permitir)" onClick=${() => { closeModal(); requestControl(id); }}><${Icon} n="remote" s=${14} /> Controlar PC</button>` : null}`
           : rel ? html`<span class="muted small">Pedido de amizade pendente</span>`
           : html`<button class="gbtn sm primary" onClick=${() => run(api.friendRequest(u.username), 'Pedido enviado!')}><${Icon} n="userPlus" s=${14} /> Adicionar amigo</button>`}
       <//>

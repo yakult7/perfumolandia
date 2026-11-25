@@ -113,6 +113,7 @@ export function DMList() {
       <button class=${cx('ch big', !cur && 'on')} onClick=${() => { set((s) => { s.view = { serverId: null, channelId: null, homeTab: s.view.homeTab === 'add' ? 'online' : s.view.homeTab }; s.ui = { ...s.ui, tab: 'friends', pane: 'list', stage: false }; }); }}>
         <${Icon} n="users" s=${18} /><span>Amigos</span>
       </button>
+      <button class="ch big" onClick=${() => openModal('settings', { tab: 'shop' })}><${Icon} n="gift" s=${18} /><span>Loja</span><span class="new-pill">Novo</span></button>
       <div class="ch-group-head"><span>Conversas</span>
         <button class="mini-btn" title="Novo grupo" onClick=${() => openModal('createGroup')}><${Icon} n="plus" s=${15} /></button>
       </div>

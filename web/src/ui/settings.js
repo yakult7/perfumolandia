@@ -4,6 +4,7 @@ import { Icon } from '../icons.js';
 import { GlassBar } from '../glass.js';
 import * as api from '../api.js';
 import * as rtc from '../rtc.js';
+import { Shop } from './shop.js';
 import { closeModal, openModal, run, safe, toast, enableNotifications } from '../actions.js';
 import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, Video, PasswordInput } from './common.js';
 import { statusMenu } from './shell.js';
@@ -14,6 +15,7 @@ const TABS = [
   { key: 'account', label: 'Perfil', icon: 'user' },
   { key: 'look', label: 'Aparência', icon: 'brush' },
   { key: 'theme', label: 'Tema e cores', icon: 'palette' },
+  { key: 'shop', label: 'Loja', icon: 'gift' },
   { key: 'voice', label: 'Voz e vídeo', icon: 'mic' },
   { key: 'screen', label: 'Transmissão', icon: 'screen' },
   { key: 'notify', label: 'Notificações', icon: 'bell' },
@@ -47,6 +49,7 @@ export function Settings({ tab: t0 = 'account' }) {
             ${tab === 'screen' ? html`<${ScreenPrefs} />` : null}
             ${tab === 'look' ? html`<${Look} />` : null}
             ${tab === 'theme' ? html`<${ThemeEditor} />` : null}
+            ${tab === 'shop' ? html`<${Shop} />` : null}
             ${tab === 'notify' ? html`<${Notify} />` : null}
             ${tab === 'security' ? html`<${Security} />` : null}
             ${tab === 'about' ? html`<${About} />` : null}

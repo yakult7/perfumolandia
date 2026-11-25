@@ -4,10 +4,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 let pttCb = null;
 ipcRenderer.on('ptt', (e, down) => pttCb?.(down));
 let gameCb = null;
-let sysCb = null;
+const sysCbs = new Map();
+let musicCb = null;
+let rcStopCb = null;
+ipcRenderer.on('rc-stop', () => rcStopCb?.());
+ipcRenderer.on('music', (e, m) => musicCb?.(m));
 let inviteCb = null;
 ipcRenderer.on('invite', (e, code) => inviteCb?.(code));
-ipcRenderer.on('sysaudio', (e, buf) => sysCb?.(buf));
+ipcRenderer.on('sysaudio', (e, key, buf) => sysCbs.get(key)?.(buf));
 ipcRenderer.on('game', (e, g) => gameCb?.(g));
 
 contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
@@ -24,7 +28,15 @@ contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
   getGame: () => ipcRenderer.invoke('game:get'),
   getInvite: () => ipcRenderer.invoke('invite:get'),
   onInvite: (cb) => { inviteCb = cb; },
-  startSysAudio: (sourceId, cb) => { sysCb = cb; return ipcRenderer.invoke('sysaudio:start', String(sourceId || '')); },
-  stopSysAudio: () => { sysCb = null; return ipcRenderer.invoke('sysaudio:stop'); },
+  // key: 'screen' | 'music'; spec: { source } (tela/janela) ou { pid } (só aquele programa)
+  startSysAudio: (key, spec, cb) => { sysCbs.set(key, cb); return ipcRenderer.invoke('sysaudio:start', String(key), { source: String(spec?.source || ''), pid: Number(spec?.pid) || 0 }); },
+  stopSysAudio: (key) => { sysCbs.delete(key); return ipcRenderer.invoke('sysaudio:stop', String(key)); },
+  getMusic: () => ipcRenderer.invoke('music:get'),
+  onMusic: (cb) => { musicCb = cb; },
+  // controle remoto: só usado depois que você aceita o pedido
+  rcStart: () => ipcRenderer.invoke('rc:start'),
+  rcInput: (m) => ipcRenderer.send('rc:input', m),
+  rcStop: () => ipcRenderer.invoke('rc:stop'),
+  onRcStop: (cb) => { rcStopCb = cb; },
   onGame: (cb) => { gameCb = cb; },
 });

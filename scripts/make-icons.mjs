@@ -65,3 +65,28 @@ await square(64, 0.02, path.join(OUT_WEB, 'favicon.png'), { r: 0, g: 0, b: 0, al
 await square(2732, 0.38, path.join(OUT_ASSETS, 'splash.png'), '#ffffff');
 await square(2732, 0.38, path.join(OUT_ASSETS, 'splash-dark.png'), '#07070c');
 console.log('Ícones gerados.');
+
+// 3) ícone do Windows (.ico com 16→256 px, cada tamanho reduzido separadamente e nítido; logo ocupando o quadro todo)
+{
+  const sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256];
+  const pngs = [];
+  for (const s of sizes) {
+    const inner = s <= 32 ? s : Math.round(s * 0.96);
+    let img = sharp(logoBuf).resize(inner, inner, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 }, kernel: 'lanczos3' });
+    if (s <= 64) img = img.sharpen({ sigma: s <= 32 ? 0.6 : 0.4 });
+    const fg = await img.png().toBuffer();
+    pngs.push(await sharp({ create: { width: s, height: s, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: fg, gravity: 'center' }]).png().toBuffer());
+  }
+  const head = Buffer.alloc(6 + 16 * sizes.length);
+  head.writeUInt16LE(0, 0); head.writeUInt16LE(1, 2); head.writeUInt16LE(sizes.length, 4);
+  let off = head.length;
+  sizes.forEach((s, i) => {
+    const e = 6 + i * 16;
+    head.writeUInt8(s >= 256 ? 0 : s, e); head.writeUInt8(s >= 256 ? 0 : s, e + 1);
+    head.writeUInt16LE(1, e + 4); head.writeUInt16LE(32, e + 6);
+    head.writeUInt32LE(pngs[i].length, e + 8); head.writeUInt32LE(off, e + 12);
+    off += pngs[i].length;
+  });
+  fs.writeFileSync(path.join(OUT_ASSETS, 'icon.ico'), Buffer.concat([head, ...pngs]));
+  await sharp(logoBuf).resize(1024, 1024, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(path.join(OUT_ASSETS, 'icon-transparent-1024.png'));
+}

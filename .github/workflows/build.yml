@@ -115,18 +115,20 @@ jobs:
       - run: npm ci
       - uses: actions/download-artifact@v4
         with: { name: web-dist, path: desktop/dist }
-      - name: audiocap.exe (som da transmissão sem as vozes da chamada)
+      - name: ajudantes nativos (som por programa e controle remoto)
         working-directory: desktop
         shell: pwsh
         run: |
           & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" -nologo -optimize -platform:x64 -target:exe -out:audiocap.exe native\audiocap.cs
-          if (!(Test-Path audiocap.exe)) { exit 1 }
+          & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" -nologo -optimize -platform:x64 -target:exe -out:inputctl.exe native\inputctl.cs
+          if (!(Test-Path audiocap.exe) -or !(Test-Path inputctl.exe)) { exit 1 }
       - name: instalador Windows
         working-directory: desktop
         shell: bash
         run: |
           npm ci
           cp ../assets/icon-transparent-512.png icon.png
+          cp ../assets/icon.ico icon.ico
           npx electron-builder --win --x64 --publish never
           ls release
       - uses: actions/upload-artifact@v4

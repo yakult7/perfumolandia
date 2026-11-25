@@ -35,6 +35,7 @@ export const mapUser = (p) => ({
   id: p.id, username: p.username, displayName: p.display_name, avatar: p.avatar_url, color: p.color,
   chosenStatus: p.status, customStatus: p.custom_status, bio: p.bio,
   banner: p.banner_url || null, accent: p.accent_color || null, pronouns: p.pronouns || '', createdAt: Date.parse(p.created_at),
+  decoration: p.decoration || null, effect: p.profile_effect || null, items: p.items || [],
 });
 const mapGroup = (g, members = []) => ({ id: g.id, name: g.name, icon: g.icon_url, ownerId: g.owner_id, members });
 export const mapMsg = (m) => ({
@@ -313,7 +314,7 @@ async function trackPresence() {
       const ch = globalChan;
       if (!ch || ch.state !== 'joined') break;
       await Promise.race([
-        ch.track({ uid: S.uid, status: S.me?.chosenStatus || 'online', room: myVoice.room, state: myVoice.state, at: Date.now(), game: S.settings.shareGame !== false && S.me?.chosenStatus !== 'invisible' ? S.myGame : null }).catch(() => {}),
+        ch.track({ uid: S.uid, status: S.me?.chosenStatus || 'online', room: myVoice.room, state: myVoice.state, at: Date.now(), pc: !!window.perfumolandiaDesktop?.rcStart, game: S.settings.shareGame !== false && S.me?.chosenStatus !== 'invisible' ? S.myGame : null, music: S.settings.shareGame !== false && S.me?.chosenStatus !== 'invisible' && S.myMusic ? { title: S.myMusic.title, artist: S.myMusic.artist, art: S.myMusic.art, app: S.myMusic.app } : null }).catch(() => {}),
         new Promise((r) => setTimeout(r, 6000)),
       ]);
     } while (trackAgain);
@@ -326,6 +327,12 @@ export function setVoicePresence(room, state) {
   return trackPresence();
 }
 export const refreshPresence = trackPresence;
+/** música tocando no Spotify (app do Windows): "Ouvindo ..." e o botão de compartilhar na chamada */
+export function setMyMusic(m) {
+  set((s) => { s.myMusic = m ? { title: m.title, artist: m.artist, art: m.art || null, app: m.app || 'Spotify', pid: m.pid, since: Date.now() } : null; });
+  if (!m) rtc.stopMusic?.(); else rtc.refreshMusic?.();
+  return trackPresence();
+}
 /** jogo aberto agora (app do Windows): aparece como "Jogando ..." para os amigos */
 export function setMyGame(g) {
   set((s) => { s.myGame = g ? { name: g.name, img: g.img || null, wide: !!g.wide, since: Date.now() } : null; });
@@ -337,6 +344,8 @@ function onPresenceSync() {
   const online = {};
   const voice = {};
   const games = {};
+  const musics = {};
+  const pcs = {};
   const rank = { online: 3, dnd: 2, idle: 1, invisible: 0 };
   for (const [sid, metas] of Object.entries(all)) {
     const meta = metas[metas.length - 1];
@@ -344,11 +353,13 @@ function onPresenceSync() {
     const st = meta.status === 'invisible' ? 'offline' : meta.status;
     if (st !== 'offline' && (!online[meta.uid] || rank[st] > rank[online[meta.uid]])) online[meta.uid] = st;
     if (meta.game?.name && st !== 'offline') games[meta.uid] = meta.game;
+    if (meta.music?.title && st !== 'offline') musics[meta.uid] = meta.music;
+    if (meta.pc && st !== 'offline') pcs[meta.uid] = true;
     if (meta.room) (voice[meta.room] ||= []).push({ sid, userId: meta.uid, state: meta.state || {}, joinedAt: meta.at });
   }
   for (const list of Object.values(voice)) list.sort((a, b) => a.joinedAt - b.joinedAt);
   const prevVoice = S.voice;
-  set((s) => { s.online = online; s.voice = voice; s.games = games; });
+  set((s) => { s.online = online; s.voice = voice; s.games = games; s.musics = musics; s.pcs = pcs; });
   for (const room of new Set([...Object.keys(prevVoice), ...Object.keys(voice)])) {
     rtc.onVoiceUpdate(room, voice[room] || []);
     if (S.outgoing?.dmId === room && (voice[room] || []).some((p) => p.userId !== S.uid)) {
@@ -365,6 +376,7 @@ export function sendEvent(payload) {
 }
 function onEvent(e) {
   if (e.to && (Array.isArray(e.to) ? !e.to.includes(S.uid) : e.to !== S.uid)) return;
+  if (String(e.type).startsWith('rc-')) { import('./remote.js').then((m) => m.onRemoteEvent(e)); return; }
   switch (e.type) {
     case 'typing': {
       if (!canSee(e.channelId)) return;
@@ -499,7 +511,12 @@ export async function updateProfile(patch) {
   if ('accent' in patch) row.accent_color = patch.accent;
   if ('banner' in patch) row.banner_url = patch.banner;
   if ('pronouns' in patch) row.pronouns = patch.pronouns.slice(0, 40);
-  const p = must(await sb.from('profiles').update(row).eq('id', S.uid).select().single());
+  if ('decoration' in patch) row.decoration = patch.decoration;
+  if ('effect' in patch) row.profile_effect = patch.effect;
+  if ('items' in patch) row.items = [...new Set(patch.items)];
+  const res = await sb.from('profiles').update(row).eq('id', S.uid).select().single();
+  if (res.error && /decoration|profile_effect|items/.test(res.error.message)) throw new Error('A loja ainda não foi ativada no banco de dados.');
+  const p = must(res);
   set((s) => { s.users = { ...s.users, [p.id]: mapUser(p) }; s.me = s.users[p.id]; });
   if ('status' in patch) trackPresence();
 }

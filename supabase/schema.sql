@@ -29,6 +29,10 @@ alter table public.profiles drop constraint if exists profiles_bio_check;
 alter table public.profiles add constraint profiles_bio_check check (char_length(bio) <= 400);
 alter table public.profiles drop constraint if exists profiles_pronouns_check;
 alter table public.profiles add constraint profiles_pronouns_check check (char_length(pronouns) <= 40);
+-- loja: moldura do avatar, efeito do perfil e itens resgatados
+alter table public.profiles add column if not exists decoration text;
+alter table public.profiles add column if not exists profile_effect text;
+alter table public.profiles add column if not exists items text[] not null default '{}';
 alter table public.profiles enable row level security;
 drop policy if exists "profiles read" on public.profiles;
 create policy "profiles read" on public.profiles for select to authenticated using (true);

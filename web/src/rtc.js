@@ -36,6 +36,7 @@ function streamsMap() {
   if (local.cam) m[local.cam.id] = 'cam';
   if (local.screen) m[local.screen.id] = 'screen';
   if (local.native) m[local.native.streamId] = 'screen';
+  if (local.music) m[local.music.id] = 'music';
   return m;
 }
 function myState() {
@@ -44,6 +45,7 @@ function myState() {
   return {
     muted: !!c.muted, deafened: !!c.deafened, camera: !!local.cam, screen: sharing,
     streams: streamsMap(), screenLabel: sharing ? c.screenLabel : null,
+    music: local.music && S.myMusic ? { title: S.myMusic.title, artist: S.myMusic.artist, art: S.myMusic.art } : null,
   };
 }
 const publish = () => S.call && api.setVoicePresence(S.call.roomId, myState());
@@ -86,7 +88,7 @@ function mungeRemote(sdp) {
 }
 
 function encodings(kind, trackKind) {
-  if (trackKind === 'audio') return [{ maxBitrate: kind === 'screen' ? 192000 : 96000, priority: 'high', networkPriority: 'high' }];
+  if (trackKind === 'audio') return [{ maxBitrate: kind === 'screen' || kind === 'music' ? 192000 : 96000, priority: 'high', networkPriority: 'high' }];
   if (kind === 'cam') {
     const q = CAM[S.settings.camQuality] || CAM['720p'];
     return [{ maxBitrate: q.kbps * 1000, maxFramerate: q.fps }];
@@ -128,6 +130,7 @@ class Peer {
     if (local.mic) this.send('mic', local.mic);
     if (local.cam) this.send('cam', local.cam);
     if (local.screen && this.wantsScreen) this.send('screen', local.screen);
+    if (local.music) this.send('music', local.music);
     if (S.call?.watching?.[sid]) api.sendWatch(sid, true);
   }
   send(kind, stream) {
@@ -201,7 +204,7 @@ class Peer {
     this.audio.set(stream.id, el);
     applyVolumes();
     el.play().catch(() => setUI({ audioBlocked: true }));
-    watchLevel(stream.id, this.userId, stream, () => this.kindOf(stream.id) !== 'screen');
+    watchLevel(stream.id, this.userId, stream, () => { const k = this.kindOf(stream.id); return k !== 'screen' && k !== 'music'; });
   }
   detachAudio(id) {
     const el = this.audio.get(id);
@@ -298,7 +301,7 @@ export function applyVolumes() {
   for (const p of peers.values()) {
     for (const [id, el] of p.audio) {
       const kind = p.kindOf(id);
-      const v = kind === 'screen' ? st.streamVolumes[p.userId] ?? 1 : st.userVolumes[p.userId] ?? 1;
+      const v = kind === 'screen' ? st.streamVolumes[p.userId] ?? 1 : kind === 'music' ? (st.musicMuted ? 0 : st.musicVolume ?? 0.6) : st.userVolumes[p.userId] ?? 1;
       el.volume = Math.max(0, Math.min(1, v));
       el.muted = !!S.call?.deafened || (kind === 'screen' && !S.call?.watching?.[p.sid]);
       if (el.setSinkId && st.outputDevice && st.outputDevice !== 'default') el.setSinkId(st.outputDevice).catch(() => {});
@@ -447,7 +450,7 @@ export async function leave(silent = false) {
   for (const p of peers.values()) p.close();
   peers.clear();
   early.clear();
-  stopLocal('mic'); stopLocal('cam'); local.sysAudio?.stop(); local.sysAudio = null; stopLocal('screen');
+  stopLocal('mic'); stopLocal('cam'); local.sysAudio?.stop(); local.sysAudio = null; stopLocal('screen'); stopMusic(true);
   for (const k of [...levels.keys()]) unwatchLevel(k);
   clearInterval(levelTimer); levelTimer = null;
   set((s) => { s.call = null; s.speaking = {}; s.ui = { ...s.ui, theater: null, callExpanded: false, callCollapsed: false }; });
@@ -592,7 +595,7 @@ export async function startScreen(opts) {
     return;
   }
   if (nativeAudio) {
-    const sa = await startSysAudio(opts.sourceId);
+    const sa = await startSysAudio('screen', { source: opts.sourceId });
     if (sa) { stream.addTrack(sa.track); local.sysAudio = sa; } else toast('Não deu para capturar o som do PC; a tela vai sem som.');
   }
   const v = stream.getVideoTracks()[0];
@@ -620,6 +623,33 @@ export function stopScreen(silent) {
   patchCall({ screenLabel: null, focus: S.call?.focus?.sid === api.clientId ? null : S.call?.focus });
   if (!silent) publish();
 }
+
+// ---------- música do Spotify na chamada (entra como um "participante" que toca a música) ----------
+export async function startMusic() {
+  if (!S.call || local.music) return;
+  const pid = S.myMusic?.pid;
+  if (!pid) { toast('Abra uma música no Spotify do PC para compartilhar.'); return; }
+  const sa = await startSysAudio('music', { pid });
+  if (!sa) { toast('Não deu para pegar o som do Spotify.', 'err'); return; }
+  local.music = new MediaStream([sa.track]);
+  local.musicCap = sa;
+  for (const p of peers.values()) p.send('music', local.music);
+  patchCall({ music: true });
+  publish();
+  sounds.streamStart();
+}
+export function stopMusic(silent) {
+  if (!local.music) return;
+  for (const p of peers.values()) p.unsend('music');
+  local.musicCap?.stop();
+  local.musicCap = null;
+  local.music = null;
+  if (S.call) patchCall({ music: false });
+  if (!silent) publish();
+}
+export const isSharingMusic = () => !!local.music;
+/** música trocou no Spotify: atualiza o que os outros veem (o som já segue sozinho) */
+export const refreshMusic = () => { if (local.music) publish(); };
 
 export function watch(sid, on) {
   if (!S.call) return;

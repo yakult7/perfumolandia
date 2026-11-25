@@ -33,8 +33,9 @@ class SysAudio extends AudioWorkletProcessor {
 }
 registerProcessor('sysaudio', SysAudio);`;
 
-/** inicia a captura; devolve { track, stop } ou null se não der (aí a transmissão segue sem som) */
-export async function startSysAudio(sourceId) {
+/** inicia a captura; key 'screen' (spec.source = fonte da tela) ou 'music' (spec.pid = Spotify).
+ *  Devolve { track, stop } ou null se não der. */
+export async function startSysAudio(key, spec) {
   const d = window.perfumolandiaDesktop;
   if (!d?.startSysAudio) return null;
   const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
@@ -46,7 +47,7 @@ export async function startSysAudio(sourceId) {
     const dest = ctx.createMediaStreamDestination();
     dest.channelCount = 2;
     node.connect(dest);
-    const ok = await d.startSysAudio(sourceId, (u8) => {
+    const ok = await d.startSysAudio(key, spec, (u8) => {
       const ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
       node.port.postMessage(ab, [ab]);
     });
@@ -57,7 +58,7 @@ export async function startSysAudio(sourceId) {
     const stop = () => {
       if (stopped) return;
       stopped = true;
-      d.stopSysAudio();
+      d.stopSysAudio(key);
       track.stop();
       ctx.close().catch(() => {});
     };

@@ -9,6 +9,9 @@ const SPECIAL = {
   Backslash: 'Backslash', Semicolon: 'Semicolon', Quote: 'Quote', Comma: 'Comma', Period: 'Period', Slash: 'Slash',
   Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
   ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight',
+  Backspace: 'Backspace', NumpadEnter: 'NumpadEnter', NumpadAdd: 'NumpadAdd', NumpadSubtract: 'NumpadSubtract',
+  NumpadMultiply: 'NumpadMultiply', NumpadDivide: 'NumpadDivide', NumpadDecimal: 'NumpadDecimal', NumLock: 'NumLock',
+  PrintScreen: 'PrintScreen', ScrollLock: 'ScrollLock', IntlBackslash: 'Backslash',
 };
 
 function codeToUiohook(code) {

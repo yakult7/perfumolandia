@@ -1,6 +1,6 @@
 // Perfumolandia para Windows (Electron).
 // Carrega o app web embutido (pasta dist) via protocolo seguro app://, sem servidor local.
-const { app, BrowserWindow, session, desktopCapturer, ipcMain, protocol, net, Tray, Menu, nativeImage, shell, Notification } = require('electron');
+const { app, BrowserWindow, session, desktopCapturer, ipcMain, protocol, net, Tray, Menu, nativeImage, shell, Notification, screen, globalShortcut } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const fs = require('node:fs');
@@ -35,7 +35,9 @@ let tray = null;
 let quitting = false;
 let pendingSource = null;
 let currentGame = null;
-const ICON = path.join(__dirname, 'icon.png');
+let currentMusic = null;
+// .ico com todos os tamanhos (16→256): nítido na barra de tarefas, bandeja e Alt+Tab
+const ICON = path.join(__dirname, process.platform === 'win32' && fs.existsSync(path.join(__dirname, 'icon.ico')) ? 'icon.ico' : 'icon.png');
 
 function createWindow({ startHidden = false, onShown } = {}) {
   win = new BrowserWindow({
@@ -77,7 +79,7 @@ function createWindow({ startHidden = false, onShown } = {}) {
 }
 
 function createTray() {
-  tray = new Tray(nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
+  tray = new Tray(ICON.endsWith('.ico') ? ICON : nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
   tray.setToolTip('Perfumolandia');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Abrir Perfumolandia', click: () => { win.show(); win.focus(); } },
@@ -167,7 +169,7 @@ app.whenReady().then(() => {
     setupGlobalPtt();
     backgroundChecks();
     // status "Jogando ...": manda o jogo aberto para o app web
-    watchGames(app, (g) => { currentGame = g; win?.webContents.send('game', g); });
+    watchGames(app, (g) => { currentGame = g; win?.webContents.send('game', g); }, (m) => { currentMusic = m; win?.webContents.send('music', m); });
   });
 });
 
@@ -187,26 +189,34 @@ ipcMain.handle('autostart:set', (e, on) => {
 });
 ipcMain.handle('app:version', () => app.getVersion());
 
-// ---------- som do PC na transmissão SEM as vozes da chamada ----------
-// audiocap.exe usa o loopback por processo do Windows: na tela inteira pega tudo menos o Perfumolandia;
-// numa janela pega só o som do programa dela (como o Discord).
-let sysCap = null;
-function stopSysAudio() {
-  if (!sysCap) return;
-  try { sysCap.stdin.end(); } catch {}
-  const p = sysCap; sysCap = null;
-  setTimeout(() => { try { p.kill(); } catch {} }, 1500);
+// ---------- captura de som por programa (audiocap.exe, loopback por processo do Windows) ----------
+// 'screen': tela inteira = tudo menos o Perfumolandia; janela = só o programa dela (como o Discord).
+// 'music': só o Spotify, para tocar a música na chamada.
+const caps = new Map(); // chave -> processo
+function stopSysAudio(key) {
+  for (const k of key ? [key] : [...caps.keys()]) {
+    const p = caps.get(k);
+    if (!p) continue;
+    caps.delete(k);
+    try { p.stdin.end(); } catch {}
+    setTimeout(() => { try { p.kill(); } catch {} }, 1500);
+  }
 }
-ipcMain.handle('sysaudio:start', (e, sourceId) => {
-  stopSysAudio();
+ipcMain.handle('sysaudio:start', (e, key, spec) => {
+  key = String(key || 'screen');
+  stopSysAudio(key);
   if (process.platform !== 'win32') return false;
   const exe = app.isPackaged ? path.join(process.resourcesPath, 'audiocap.exe') : path.join(__dirname, 'audiocap.exe');
   if (!fs.existsSync(exe)) return false;
-  const hwnd = /^window:(\d+):/.exec(sourceId || '')?.[1];
-  const args = hwnd ? ['w' + hwnd, 'include'] : [String(process.pid)];
+  let args;
+  if (spec?.pid) args = [String(spec.pid | 0), 'include'];
+  else {
+    const hwnd = /^window:(\d+):/.exec(spec?.source || '')?.[1];
+    args = hwnd ? ['w' + hwnd, 'include'] : [String(process.pid)];
+  }
   return new Promise((resolve) => {
     const p = spawn(exe, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
-    sysCap = p;
+    caps.set(key, p);
     let rest = null, started = false;
     p.stdout.on('data', (chunk) => {
       if (!started) { started = true; resolve(true); }
@@ -214,17 +224,66 @@ ipcMain.handle('sysaudio:start', (e, sourceId) => {
       if (rest) { chunk = Buffer.concat([rest, chunk]); rest = null; }
       const cut = chunk.length - (chunk.length % 4);
       if (cut < chunk.length) rest = chunk.subarray(cut);
-      if (cut && sysCap === p) e.sender.send('sysaudio', chunk.subarray(0, cut));
+      if (cut && caps.get(key) === p && !e.sender.isDestroyed()) e.sender.send('sysaudio', key, chunk.subarray(0, cut));
     });
     p.stderr.on('data', (d) => console.warn('audiocap:', String(d).trim()));
     p.on('error', () => resolve(false));
-    p.on('exit', () => { if (!started) resolve(false); if (sysCap === p) sysCap = null; });
-    setTimeout(() => { if (!started) { resolve(false); stopSysAudio(); } }, 4000);
+    p.on('exit', () => { if (!started) resolve(false); if (caps.get(key) === p) caps.delete(key); });
+    setTimeout(() => { if (!started) { resolve(false); stopSysAudio(key); } }, 4000);
   });
 });
-ipcMain.handle('sysaudio:stop', () => stopSysAudio());
-app.on('will-quit', stopSysAudio);
+ipcMain.handle('sysaudio:stop', (e, key) => stopSysAudio(key ? String(key) : undefined));
+app.on('will-quit', () => stopSysAudio());
 ipcMain.handle('game:get', () => currentGame);
+
+// ---------- controle remoto (estilo AnyDesk) ----------
+// Só começa depois que o dono do PC aceita o pedido no app. inputctl.exe aplica mouse e teclado;
+// Ctrl+Alt+F12 encerra na hora, mesmo com outra janela em foco.
+let rc = null;
+function stopRemote() {
+  if (!rc) return;
+  try { rc.proc.stdin.end(); } catch {}
+  const p = rc.proc;
+  setTimeout(() => { try { p.kill(); } catch {} }, 800);
+  try { globalShortcut.unregister('Control+Alt+F12'); } catch {}
+  rc = null;
+}
+ipcMain.handle('rc:start', async (e) => {
+  stopRemote();
+  if (process.platform !== 'win32') return null;
+  const exe = app.isPackaged ? path.join(process.resourcesPath, 'inputctl.exe') : path.join(__dirname, 'inputctl.exe');
+  if (!fs.existsSync(exe)) return null;
+  const display = screen.getPrimaryDisplay();
+  const sources = await desktopCapturer.getSources({ types: ['screen'] });
+  const src = sources.find((s) => String(s.display_id) === String(display.id)) || sources[0];
+  const proc = spawn(exe, [], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
+  proc.on('exit', () => { if (rc?.proc === proc) rc = null; });
+  rc = { proc, display };
+  try { globalShortcut.register('Control+Alt+F12', () => { e.sender.send('rc-stop'); stopRemote(); }); } catch {}
+  return { sourceId: src?.id || null };
+});
+const { codeToUiohook } = require('./keymap.js');
+ipcMain.on('rc:input', (e, m) => {
+  if (!rc || !m) return;
+  const w = (line) => { try { rc.proc.stdin.write(line + '\n'); } catch {} };
+  const { bounds, scaleFactor: sf } = rc.display;
+  const clamp = (v) => Math.max(0, Math.min(1, Number(v) || 0));
+  switch (m.t) {
+    case 'm': w(`m ${Math.round((bounds.x + clamp(m.x) * bounds.width) * sf)} ${Math.round((bounds.y + clamp(m.y) * bounds.height) * sf)}`); break;
+    case 'd': case 'u': w(`${m.t} ${[0, 1, 2].includes(m.b) ? m.b : 0}`); break;
+    case 'w': w(`w ${Math.max(-1200, Math.min(1200, Math.round(m.d) || 0))}`); break;
+    case 'h': w(`h ${Math.max(-1200, Math.min(1200, Math.round(m.d) || 0))}`); break;
+    case 'k': {
+      const kc = codeToUiohook(String(m.code || ''));
+      if (kc == null) return;
+      w(`k ${kc & 0xff} ${kc > 0xff ? 1 : 0} ${m.down ? 1 : 0}`);
+      break;
+    }
+  }
+});
+ipcMain.handle('rc:stop', () => stopRemote());
+app.on('will-quit', stopRemote);
+ipcMain.handle('music:get', () => currentMusic);
 
 app.on('window-all-closed', () => {});
 

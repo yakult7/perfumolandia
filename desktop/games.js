@@ -23,7 +23,7 @@ const KNOWN = {
 const PS = `
 $ErrorActionPreference='SilentlyContinue'
 Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.Path } | ForEach-Object {
-  [pscustomobject]@{ n=$_.ProcessName; p=$_.Path; t=$_.MainWindowTitle; d=$_.MainModule.FileVersionInfo.FileDescription }
+  [pscustomobject]@{ n=$_.ProcessName; i=$_.Id; p=$_.Path; t=$_.MainWindowTitle; d=$_.MainModule.FileVersionInfo.FileDescription }
 } | ConvertTo-Json -Compress`;
 
 function listWindows() {
@@ -83,9 +83,42 @@ async function steamHeader(appid) {
   return url;
 }
 
+// ---------- música (Spotify) ----------
+// Tocando, a janela do Spotify tem o título "Artista - Música"; pausado, fica "Spotify", "Spotify Premium"...
+const artCache = new Map();
+async function albumArt(artist, title) {
+  const k = artist + '|' + title;
+  if (artCache.has(k)) return artCache.get(k);
+  let url = null;
+  try {
+    const q = encodeURIComponent(`${artist} ${title}`.slice(0, 120));
+    // artista + música; se não achar, a música mais conhecida do artista (melhor que nada)
+    const tries = [[q, null], [encodeURIComponent(artist.slice(0, 80)), artist]];
+    outer: for (const [term, mustArtist] of tries) {
+      for (const country of ['BR', 'US']) {
+        const r = await fetch(`https://itunes.apple.com/search?term=${term}&entity=song&limit=5&country=${country}`, { signal: AbortSignal.timeout(6000) });
+        const j = await r.json();
+        const hit = (j?.results || []).find((x) => !mustArtist || String(x.artistName || '').toLowerCase().includes(mustArtist.toLowerCase().split(/[,&]/)[0].trim()));
+        url = hit?.artworkUrl100?.replace('100x100bb', '300x300bb') || null;
+        if (url) break outer;
+      }
+    }
+  } catch {}
+  artCache.set(k, url);
+  return url;
+}
+async function detectMusic(list) {
+  const w = list.find((x) => String(x.n || '').toLowerCase() === 'spotify' && / - /.test(x.t || '') && !/^spotify/i.test(x.t || ''));
+  if (!w) return null;
+  const t = String(w.t);
+  const i = t.indexOf(' - ');
+  const artist = t.slice(0, i).trim(), title = t.slice(i + 3).trim();
+  return { key: 'spotify:' + t, app: 'Spotify', artist: artist.slice(0, 80), title: title.slice(0, 100), art: await albumArt(artist, title), pid: w.i };
+}
+
 /** devolve { name, img, key } ou null */
-async function detectGame(app) {
-  const hit = pick(await listWindows());
+async function detectGame(app, listIn) {
+  const hit = pick(listIn || (await listWindows()));
   if (!hit) return null;
   const { w } = hit;
   const steam = steamInfo(w.p);
@@ -100,16 +133,25 @@ async function detectGame(app) {
 }
 
 /** procura a cada 15 s e avisa só quando muda */
-function watchGames(app, onChange) {
+/** procura a cada 6 s (jogo e música) e avisa só quando muda */
+function watchGames(app, onChange, onMusic) {
   if (process.platform !== 'win32') return;
-  let last = null;
+  let last = null, lastMusic = null, busy = false;
   const tick = async () => {
-    const g = await detectGame(app).catch(() => null);
-    const k = g?.key || null;
-    if (k !== last) { last = k; onChange(g); }
+    if (busy) return;
+    busy = true;
+    try {
+      const list = await listWindows();
+      const g = await detectGame(app, list).catch(() => null);
+      const k = g?.key || null;
+      if (k !== last) { last = k; onChange(g); }
+      const m = await detectMusic(list).catch(() => null);
+      const mk = m?.key || null;
+      if (mk !== lastMusic) { lastMusic = mk; onMusic?.(m); }
+    } finally { busy = false; }
   };
   tick();
-  setInterval(tick, 15000);
+  setInterval(tick, 6000);
 }
 
-module.exports = { watchGames, detectGame };
+module.exports = { watchGames, detectGame, detectMusic };

@@ -11,7 +11,7 @@ export const DEFAULT_SETTINGS = {
   inputMode: 'voice', pttKey: 'KeyV', pttLabel: 'V',
   camQuality: '720p',
   screenQuality: '4k60', screenPriority: 'resolution', screenAudio: true, codec: 'auto',
-  perfMode: false, sounds: true, showStats: false, shareGame: true,
+  perfMode: false, sounds: true, showStats: false, shareGame: true, musicVolume: 0.6, musicMuted: false,
   theme: 'system', accent: '#0a84ff', wallpaper: 'aurora', wallpaperColors: ['#3b5bff', '#a04dff', '#00c2c7'], wallpaperImage: null, glassStyle: 'clear',
   callHeight: 340,
   appTheme: 'default', appColors: ['#5e5ce6', '#ff375f', '#0a84ff'], appAngle: 135, appIntensity: 0.6,
@@ -21,7 +21,7 @@ export const DEFAULT_SETTINGS = {
 export const S = {
   booting: true, authed: false, needsProfile: false, uid: null, inviteCode: null,
   me: null, ready: false, connected: false,
-  users: {}, online: {}, games: {}, myGame: null, relations: {}, servers: {}, dms: {}, groups: {}, messages: {},
+  users: {}, online: {}, games: {}, myGame: null, musics: {}, myMusic: null, pcs: {}, remote: null, rcIncoming: null, relations: {}, servers: {}, dms: {}, groups: {}, messages: {},
   lastIds: {}, readIds: load('readIds', {}), voice: {}, typing: {}, speaking: {},
   view: { serverId: null, channelId: null, homeTab: 'online' },
   lastChannel: load('lastChannel', {}),

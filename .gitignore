@@ -11,3 +11,5 @@ keys/
 .DS_Store
 Thumbs.db
 desktop/audiocap.exe
+desktop/inputctl.exe
+desktop/icon.ico
