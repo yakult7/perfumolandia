@@ -38,10 +38,12 @@ const sweepAnimations = () => {
 };
 setInterval(() => { if (wasIdle) sweepAnimations(); }, 4000);
 const setIdle = () => {
-  // leve = janela sem foco/escondida, jogo aberto (mesmo com o app num 2º monitor), PC fraco ou modo desempenho ligado
-  const idle = document.hidden || !document.hasFocus() || !!S.myGame || weakPC() || !!S.settings.perfMode;
+  // vidro fosco (sem desfoque) só com o app escondido/minimizado, sem aceleração de vídeo ou no modo desempenho
+  const idle = document.hidden || document.documentElement.classList.contains('nogpu') || !!S.settings.perfMode;
   document.documentElement.classList.toggle('idle', idle);
-  if (idle !== wasIdle) { wasIdle = idle; sweepAnimations(); }
+  // animações que repetem param também sem foco, com jogo aberto ou em PC fraco (o vidro parado não gasta nada)
+  const calm = idle || !document.hasFocus() || !!S.myGame || weakPC();
+  if (calm !== wasIdle) { wasIdle = calm; sweepAnimations(); }
   // GIFs e vídeos do chat: param só quando você não está olhando (sem foco/escondido) ou com um jogo aberto
   const freeze = document.hidden || !document.hasFocus() || !!S.myGame;
   if (freeze === frozen) return;
@@ -65,6 +67,14 @@ addEventListener('blur', setIdle);
 document.addEventListener('visibilitychange', setIdle);
 setIdle();
 subscribe(setIdle);
+
+// Ctrl+K (ou Cmd+K): busca rápida de amigos, conversas e mensagens
+addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && S.ready) {
+    e.preventDefault();
+    import('./actions.js').then((a) => (S.ui.modal?.name === 'search' ? a.closeModal() : a.openModal('search')));
+  }
+});
 
 // contador no ícone da barra de tarefas: conversas/grupos não lidos + pedidos de amizade recebidos
 if (window.perfumolandiaDesktop?.setBadge) {

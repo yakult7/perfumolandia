@@ -173,6 +173,7 @@ export function DMList() {
   ].sort((a, b) => rank(b.d.id) - rank(a.d.id));
   return html`
     <div class="dmlist">
+      <button class="find-btn" onClick=${() => openModal('search')}><${Icon} n="search" s=${15} /><span>Buscar amigos ou mensagens</span></button>
       <button class=${cx('ch big', !cur && !shopOn && 'on')} onClick=${() => { set((s) => { s.view = { serverId: null, channelId: null, homeTab: s.view.homeTab === 'add' ? 'online' : s.view.homeTab }; s.ui = { ...s.ui, tab: 'friends', pane: 'list', stage: false }; }); }}>
         <${Icon} n="users" s=${18} /><span>Amigos</span>
       </button>

@@ -14,6 +14,7 @@ import { Settings } from './settings.js';
 import { EmojiPicker, QUICK } from './chat.js';
 import { isNativeApp } from '../native.js';
 import { pushSupported, pushPermission, enablePush } from '../push.js';
+import { SearchModal } from './search.js';
 
 export function Modals() {
   const m = useS((s) => s.ui.modal);
@@ -22,7 +23,7 @@ export function Modals() {
     addServer: AddServer, prompt: Prompt, inviteTo: InviteTo, createChannel: CreateChannel, renameChannel: RenameChannel, invite: Invite,
     serverSettings: ServerSettings, confirm: Confirm, profile: Profile, image: ImageView, react: React,
     screenShare: ScreenShareModal, volume: VolumeModal, settings: Settings, install: InstallHelp,
-    createGroup: CreateGroup, groupSettings: GroupSettings, addToGroup: AddToGroup,
+    createGroup: CreateGroup, groupSettings: GroupSettings, addToGroup: AddToGroup, search: SearchModal,
   }[m.name];
   return C ? html`<${C} key=${m.name + (m.tab || '')} ...${m} />` : null;
 }
