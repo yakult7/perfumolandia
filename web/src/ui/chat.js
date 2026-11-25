@@ -318,6 +318,32 @@ function Composer({ cid, placeholder, reply, clearReply, members, onEditLast }) 
   useEffect(() => { if (!touch) ta.current?.focus(); }, [cid, reply]);
   useEffect(() => () => set((s) => { s.ui = { ...s.ui, drafts: { ...s.ui.drafts, [cid]: ta.current?.value || '' } }; }), [cid]);
 
+  // arrastar arquivos/imagens para qualquer lugar da conversa (não só a caixa de mensagem)
+  const [dropping, setDropping] = useState(false);
+  useEffect(() => {
+    let depth = 0;
+    const inChat = (e) => !!e.target?.closest?.('.chat');
+    const accepts = (e) => [...(e.dataTransfer?.types || [])].some((t) => t === 'Files' || t === 'text/uri-list');
+    const enter = (e) => { if (!accepts(e)) return; depth++; if (inChat(e)) setDropping(true); };
+    const over = (e) => { if (!accepts(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = inChat(e) ? 'copy' : 'none'; setDropping(inChat(e)); };
+    const leave = () => { depth = Math.max(0, depth - 1); if (!depth) setDropping(false); };
+    const drop = (e) => {
+      if (!accepts(e)) return;
+      e.preventDefault();
+      depth = 0; setDropping(false);
+      if (!inChat(e)) return;
+      if (e.dataTransfer.files.length) { addFiles(e.dataTransfer.files); return; }
+      // imagem/GIF arrastado de um site: vira o link (que aparece como a imagem)
+      const url = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').split('\n')[0].trim();
+      if (/^https?:\/\//.test(url)) { const t = ta.current; const v = (t.value ? t.value + ' ' : '') + url; setText(v); t.value = v; t.focus(); }
+    };
+    addEventListener('dragenter', enter);
+    addEventListener('dragover', over);
+    addEventListener('dragleave', leave);
+    addEventListener('drop', drop);
+    return () => { removeEventListener('dragenter', enter); removeEventListener('dragover', over); removeEventListener('dragleave', leave); removeEventListener('drop', drop); };
+  }, [cid]);
+
   const addFiles = (fl) => {
     const arr = [...fl].slice(0, 10);
     if (arr.some((f) => f.size > 50 * 1024 * 1024)) toast('Máximo de 50 MB por arquivo.', 'err');
@@ -377,8 +403,8 @@ function Composer({ cid, placeholder, reply, clearReply, members, onEditLast }) 
 
   return html`
     <div class="composer-wrap"
-      onDragOver=${(e) => { e.preventDefault(); }}
-      onDrop=${(e) => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}>
+>
+      ${dropping ? html`<div class="drop-zone"><div class="drop-card lg"><${Icon} n="file" s=${34} /><b>Solte para enviar</b><small>Imagens, vídeos e arquivos de até 50 MB</small></div></div>` : null}
       ${mentionList.length ? html`
         <div class="mention-pop lg pop">
           ${mentionList.map((u, i) => html`
