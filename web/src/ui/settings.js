@@ -171,7 +171,7 @@ function Voice() {
     </div>
     <div class="field"><span class="field-label">Supressão de ruído</span>
       <div class="chips">
-        <button class=${cx('chip', (st.noiseMode || 'smart') === 'smart' && 'on')} onClick=${() => setAndReload({ noiseMode: 'smart' })}>Inteligente (IA)</button>
+        <button class=${cx('chip', (st.noiseMode || 'smart') === 'smart' && 'on')} onClick=${() => { localStorage.setItem('rs.noiseChosen', '1'); setAndReload({ noiseMode: 'smart' }); }}>Inteligente (IA)</button>
         <button class=${cx('chip', st.noiseMode === 'basic' && 'on')} onClick=${() => setAndReload({ noiseMode: 'basic' })}>Básica</button>
         <button class=${cx('chip', st.noiseMode === 'off' && 'on')} onClick=${() => setAndReload({ noiseMode: 'off' })}>Desligada</button>
       </div>
@@ -228,7 +228,8 @@ function Look() {
     </div>
     <button class="gbtn" onClick=${() => openModal('settings', { tab: 'theme' })}><${Icon} n="palette" s=${15} /> Personalizar cores e degradês</button>
     <div class="group-box">
-      <${Toggle} label="Modo desempenho (jogando)" hint="Desliga refração e desfoque do vidro para gastar menos GPU durante o jogo." value=${st.perfMode} onChange=${(v) => setSettings({ perfMode: v })} />
+      <${Toggle} label="Modo desempenho" hint="Sem vidro e sem animações o tempo todo. Já liga sozinho quando um jogo está aberto, com o app em segundo plano e em PC fraco." value=${st.perfMode} onChange=${(v) => setSettings({ perfMode: v })} />
+      ${window.perfumolandiaDesktop?.metrics ? html`<${PerfPanel} />` : null}
       <${Toggle} label="Sons do app" hint="Entrar/sair da chamada, mensagens, mudo." value=${st.sounds} onChange=${(v) => setSettings({ sounds: v })} />
       <${Toggle} label="Mostrar o jogo que estou jogando" hint="No app do Windows, seus amigos veem “Jogando …” com a capa do jogo." value=${st.shareGame !== false} onChange=${(v) => { setSettings({ shareGame: v }); api.refreshPresence(); }} />
       ${window.perfumolandiaDesktop?.getAutostart ? html`<${AutostartToggle} />` : null}
@@ -335,5 +336,26 @@ export function MePage() {
       <div class="me-list material">
         ${TABS.map((t) => html`<button key=${t.key} class="me-item" onClick=${() => openModal('settings', { tab: t.key })}><${Icon} n=${t.icon} s=${19} /><span>${t.label}</span><${Icon} n="right" s=${16} /></button>`)}
       </div>
+    </div>`;
+}
+
+/** quanto o app está gastando agora, por parte (para descobrir o que pesa num PC) */
+function PerfPanel() {
+  const [m, setM] = useState(null);
+  useEffect(() => {
+    let on = true;
+    const tick = () => window.perfumolandiaDesktop.metrics().then((x) => on && setM(x)).catch(() => {});
+    tick();
+    const t = setInterval(tick, 2000);
+    return () => { on = false; clearInterval(t); };
+  }, []);
+  if (!m) return null;
+  const NAMES = { Browser: 'Principal', Tab: 'Tela do app', GPU: 'Vídeo (GPU)', Utility: 'Serviços', 'Pepper Plugin': 'Plugin', Unknown: 'Outros' };
+  const total = m.list.reduce((a, p) => a + p.cpu, 0);
+  return html`
+    <div class="perf-box">
+      <div class="perf-head"><b>Uso agora</b><span class=${total > 5 ? 'warn' : 'ok'}>${total.toFixed(1)}% da CPU</span></div>
+      ${m.list.filter((p) => p.cpu >= 0.05).map((p) => html`<div class="perf-row" key=${p.pid}><span>${NAMES[p.type] || p.type}${p.name ? ' · ' + p.name : ''}</span><b>${p.cpu.toFixed(1)}%</b></div>`)}
+      <small class="muted">${m.cores} núcleos · aceleração de vídeo ${m.gpu ? 'ligada' : 'DESLIGADA'}${document.documentElement.classList.contains('idle') ? ' · modo leve ativo' : ''}</small>
     </div>`;
 }

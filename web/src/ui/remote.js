@@ -61,6 +61,13 @@ function RemoteView({ r }) {
   const pending = useRef(null);
 
   useEffect(() => { const v = vref.current; if (v && v.srcObject !== remoteStream()) v.srcObject = remoteStream(); }, [r.v, r.state]);
+  // no app do PC abre em tela cheia: a tela do amigo inteira, sem a sua barra de tarefas cortando a parte de baixo
+  useEffect(() => {
+    const d = window.perfumolandiaDesktop;
+    if (!d?.setFullScreen) return;
+    d.setFullScreen(true);
+    return () => { d.setFullScreen(false); };
+  }, []);
 
   // posição na imagem (o vídeo fica "contain": desconta as faixas pretas)
   const norm = (e) => {
@@ -103,7 +110,9 @@ function RemoteView({ r }) {
   }, [full]);
 
   const toggleFull = async () => {
-    if (document.fullscreenElement) { await document.exitFullscreen().catch(() => {}); navigator.keyboard?.unlock?.(); setFull(false); return; }
+    const d = window.perfumolandiaDesktop;
+    if (document.fullscreenElement || full) { await document.exitFullscreen().catch(() => {}); navigator.keyboard?.unlock?.(); d?.setFullScreen?.(false); setFull(false); return; }
+    if (d?.setFullScreen) await d.setFullScreen(true);
     await wrap.current.requestFullscreen().catch(() => {});
     navigator.keyboard?.lock?.().catch(() => {}); // em tela cheia, até Esc e atalhos vão para o PC do amigo
     setFull(true);

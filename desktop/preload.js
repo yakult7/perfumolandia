@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
   setAutostart: (on) => ipcRenderer.invoke('autostart:set', !!on),
   version: () => ipcRenderer.invoke('app:version'),
   gpuStatus: () => ipcRenderer.invoke('gpu:status'),
+  metrics: () => ipcRenderer.invoke('app:metrics'),
   updateReady: () => ipcRenderer.invoke('update:get'),
   onUpdateReady: (cb) => { updCb = cb; },
   installUpdate: () => ipcRenderer.invoke('update:install'),
@@ -43,6 +44,7 @@ contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
   rcStart: () => ipcRenderer.invoke('rc:start'),
   rcInput: (m) => ipcRenderer.send('rc:input', m),
   rcStop: () => ipcRenderer.invoke('rc:stop'),
+  setFullScreen: (on) => ipcRenderer.invoke('win:fullscreen', !!on),
   onRcStop: (cb) => { rcStopCb = cb; },
   onGame: (cb) => { gameCb = cb; },
 });

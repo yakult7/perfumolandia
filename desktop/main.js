@@ -192,6 +192,14 @@ ipcMain.handle('update:get', () => updateReady());
 ipcMain.handle('update:install', () => { quitting = true; installNow(); });
 // PC sem aceleração de vídeo (o Windows desenha tudo na CPU): o app liga o modo leve sozinho
 ipcMain.handle('gpu:status', () => { try { return app.getGPUFeatureStatus(); } catch { return null; } });
+// painel "Uso agora" nos Ajustes: CPU de cada processo do app (em % do computador inteiro)
+ipcMain.handle('app:metrics', () => {
+  const cores = require('node:os').cpus().length;
+  const list = app.getAppMetrics().map((p) => ({ pid: p.pid, type: p.type, name: p.serviceName || p.name || '', cpu: (p.cpu?.percentCPUUsage || 0) / cores }));
+  let gpu = true;
+  try { gpu = /^enabled/.test(app.getGPUFeatureStatus().gpu_compositing || ''); } catch {}
+  return { cores, gpu, list };
+});
 
 // ---------- captura de som por programa (audiocap.exe, loopback por processo do Windows) ----------
 // 'screen': tela inteira = tudo menos o Perfumolandia; janela = só o programa dela (como o Discord).
@@ -286,6 +294,8 @@ ipcMain.on('rc:input', (e, m) => {
   }
 });
 ipcMain.handle('rc:stop', () => stopRemote());
+// tela cheia da janela (acesso remoto: a tela do amigo inteira, sem a barra de tarefas cobrindo)
+ipcMain.handle('win:fullscreen', (e, on) => { if (win) win.setFullScreen(!!on); return !!on; });
 app.on('will-quit', stopRemote);
 ipcMain.handle('music:get', () => currentMusic);
 

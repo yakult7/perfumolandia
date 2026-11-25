@@ -245,7 +245,7 @@ function TextMessage({ m, grouped, names, onReply, editing, setEditing }) {
             : m.content && isLinkMedia(m.content) ? html`<${LinkMedia} text=${m.content} />`
             : m.content ? html`<div class=${cx('msg-text', isBigEmoji(m.content) && 'big-emoji')} dangerouslySetInnerHTML=${{ __html: md(m.content, names) }}></div><${Embeds} text=${m.content} />` : null}
           ${m.editedAt && !editing ? html`<small class="edited">(editada)</small>` : null}
-          ${m.attachments?.length ? html`<div class="atts">${m.attachments.map((a, i) => html`<${Attachment} key=${i} a=${a} />`)}</div>` : null}
+          ${m.attachments?.length ? html`<${Attachments} list=${m.attachments} />` : null}
           ${Object.keys(m.reactions || {}).length ? html`
             <div class="reacts">
               ${Object.entries(m.reactions).map(([e, ids]) => html`
@@ -281,6 +281,25 @@ function EditBox({ m, done }) {
         onKeyDown=${(e) => { if (e.key === 'Escape') done(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); } }}></textarea>
       <small class="muted">Esc para cancelar · Enter para salvar</small>
     </div>`;
+}
+
+/** anexos: várias fotos viram um mosaico (economiza espaço); o resto fica em lista */
+function Attachments({ list }) {
+  const imgs = list.filter((a) => (a.type || '').startsWith('image/'));
+  const rest = list.filter((a) => !(a.type || '').startsWith('image/'));
+  const shown = imgs.slice(0, 4);
+  return html`<div class="atts">
+    ${imgs.length === 1 ? html`<${Attachment} a=${imgs[0]} />` : null}
+    ${imgs.length > 1 ? html`
+      <div class=${'img-grid n' + shown.length}>
+        ${shown.map((a, i) => html`
+          <button key=${i} class="img-cell" onClick=${() => openModal('image', { a, list: imgs, i })} onContextMenu=${(e) => imageMenu(e, a.url, a.name)}>
+            <img src=${a.url} alt=${a.name} loading="lazy" />
+            ${i === 3 && imgs.length > 4 ? html`<span class="img-more">+${imgs.length - 4}</span>` : null}
+          </button>`)}
+      </div>` : null}
+    ${rest.map((a, i) => html`<${Attachment} key=${'r' + i} a=${a} />`)}
+  </div>`;
 }
 
 function Attachment({ a }) {

@@ -1,7 +1,7 @@
 import './app.css';
 import './shop.css';
 import { html, render } from './lib.js';
-import { useS, S, subscribe } from './store.js';
+import { useS, S, subscribe, setSettings } from './store.js';
 import * as api from './api.js';
 import { Auth } from './ui/auth.js';
 import { Shell } from './ui/shell.js';
@@ -21,14 +21,20 @@ function App() {
 
 applyTheme();
 // janela sem foco (jogando) ou escondida: pausa toda animação e tira a refração do vidro -> CPU perto de zero
+// PC fraco: 4 núcleos ou menos, ou sem aceleração de vídeo
+const weakPC = () => (navigator.hardwareConcurrency || 8) <= 4 || document.documentElement.classList.contains('nogpu');
+let frozen = false;
 const setIdle = () => {
-  const idle = document.hidden || !document.hasFocus();
-  if (idle === document.documentElement.classList.contains('idle')) return;
+  // leve = janela sem foco/escondida, jogo aberto (mesmo com o app num 2º monitor), PC fraco ou modo desempenho ligado
+  const idle = document.hidden || !document.hasFocus() || !!S.myGame || weakPC() || !!S.settings.perfMode;
   document.documentElement.classList.toggle('idle', idle);
-  // GIFs e vídeos do chat: pausam (vídeo) ou viram foto parada (GIF) enquanto você não está olhando
-  for (const v of document.querySelectorAll('.link-media, .embed video, .gif-item video')) if (v.tagName === 'VIDEO') { if (idle) v.pause(); else v.play().catch(() => {}); }
+  // GIFs e vídeos do chat: param só quando você não está olhando (sem foco/escondido) ou com um jogo aberto
+  const freeze = document.hidden || !document.hasFocus() || !!S.myGame;
+  if (freeze === frozen) return;
+  frozen = freeze;
+  for (const v of document.querySelectorAll('.link-media, .embed video, .gif-item video')) if (v.tagName === 'VIDEO') { if (freeze) v.pause(); else v.play().catch(() => {}); }
   for (const img of document.querySelectorAll('.link-media img, .att-img img, .gif-item img')) {
-    if (idle) {
+    if (freeze) {
       if (!img.complete || !img.naturalWidth || img.dataset.live) continue;
       try {
         const c = document.createElement('canvas');
@@ -44,6 +50,9 @@ addEventListener('focus', setIdle);
 addEventListener('blur', setIdle);
 document.addEventListener('visibilitychange', setIdle);
 setIdle();
+subscribe(setIdle);
+// PC fraco: supressão de ruído básica (a de IA pesa em processador antigo), só se a pessoa nunca escolheu
+if (weakPC() && !localStorage.getItem('rs.noiseChosen')) { setSettings({ noiseMode: 'basic' }); localStorage.setItem('rs.noiseChosen', '1'); }
 import('./decoart.js').then((m) => m.installDecoDefs());
 import('./nameplates.js').then((m) => m.installNameplates());
 document.documentElement.classList.toggle('native', isNativeApp);
@@ -54,7 +63,7 @@ if (window.perfumolandiaDesktop) {
   window.perfumolandiaDesktop.onUpdateReady?.(upd);
   window.perfumolandiaDesktop.updateReady?.().then(upd);
   window.perfumolandiaDesktop.gpuStatus?.().then((g) => {
-    if (g && !/^enabled/.test(g.gpu_compositing || '')) document.documentElement.classList.add('nogpu');
+    if (g && !/^enabled/.test(g.gpu_compositing || '')) { document.documentElement.classList.add('nogpu'); setIdle(); }
   });
   window.perfumolandiaDesktop.onGame?.((g) => api.setMyGame(g));
   window.perfumolandiaDesktop.getGame?.().then((g) => g && api.setMyGame(g));

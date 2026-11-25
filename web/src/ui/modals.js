@@ -284,13 +284,24 @@ function Profile({ id }) {
     <//>`;
 }
 
-function ImageView({ a }) {
+function ImageView({ a: a0, list, i: i0 = 0 }) {
+  const [i, setI] = useState(i0);
+  const a = list ? list[i] : a0;
+  const n = list?.length || 1;
+  const go = (d) => setI((x) => (x + d + n) % n);
+  useEffect(() => {
+    if (n < 2) return;
+    const k = (e) => { if (e.key === 'ArrowRight') go(1); if (e.key === 'ArrowLeft') go(-1); };
+    addEventListener('keydown', k);
+    return () => removeEventListener('keydown', k);
+  }, [n]);
   return html`
     <div class="viewer" onClick=${closeModal}>
       ${String(a.type || '').startsWith('video/') ? html`<video src=${a.url} autoplay loop muted playsinline controls onClick=${(e) => e.stopPropagation()}></video>`
         : html`<img src=${a.url} alt=${a.name} onClick=${(e) => e.stopPropagation()} onContextMenu=${(e) => { e.stopPropagation(); imageMenu(e, a.url, a.name); }} />`}
       <div class="viewer-bar lg" onClick=${(e) => e.stopPropagation()}>
-        <span>${a.name}</span>
+        <span>${a.name}${n > 1 ? ` · ${i + 1} de ${n}` : ''}</span>
+        ${n > 1 ? html`<button class="gbtn icon-only sm" title="Anterior" onClick=${() => go(-1)}><${Icon} n="back" s=${16} /></button><button class="gbtn icon-only sm" title="Próxima" onClick=${() => go(1)}><${Icon} n="right" s=${16} /></button>` : null}
         <button class="gbtn sm" onClick=${() => copyImage(a.url)}><${Icon} n="copy" s=${16} /> Copiar</button>
         <button class="gbtn sm" onClick=${() => saveImage(a.url, a.name)}><${Icon} n="download" s=${16} /> Salvar</button>
         <button class="gbtn icon-only sm" onClick=${closeModal} aria-label="Fechar"><${Icon} n="x" s=${18} /></button>
