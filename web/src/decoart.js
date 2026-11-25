@@ -2,6 +2,7 @@
 // envolvem e saem do círculo da foto. Caixa 120×120; a foto é o círculo r=50 no centro (60,60).
 // Gradientes e filtros ficam num único <svg> escondido no documento (ids únicos, sem repetir por avatar).
 
+import { rose as frRose, leaf as frLeaf, FRAME_DEFS } from './framesart.js';
 const f = (n) => Math.round(n * 10) / 10;
 const rad = (d) => (d * Math.PI) / 180;
 const P = (a, r) => [60 + r * Math.cos(a), 60 + r * Math.sin(a)];
@@ -88,6 +89,7 @@ export const DEFS = `
 <linearGradient id="dk-blueflame" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ffffff"/><stop offset=".3" stop-color="#7cf3ff"/><stop offset=".7" stop-color="#2d8cff"/><stop offset="1" stop-color="#5b2dff" stop-opacity=".2"/></linearGradient>
 <linearGradient id="dk-wing" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7af0ff"/><stop offset=".5" stop-color="#8b5cff"/><stop offset="1" stop-color="#ff5fd2"/></linearGradient>
 <linearGradient id="dk-wing2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff9be8"/><stop offset="1" stop-color="#7a3cff"/></linearGradient>
+<linearGradient id="dk-moonrim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#d4d9e3"/><stop offset="1" stop-color="#7d8597"/></linearGradient>
 <linearGradient id="dk-glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".25" stop-color="#cfe0ff" stop-opacity=".55"/><stop offset=".55" stop-color="#8fa8ff" stop-opacity=".35"/><stop offset=".8" stop-color="#ffffff" stop-opacity=".85"/><stop offset="1" stop-color="#b7c6ff" stop-opacity=".5"/></linearGradient>
 <linearGradient id="dk-shine" x1="0" y1="0" x2="50" y2="20" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".85"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
   <animateTransform attributeName="gradientTransform" type="translate" from="-60 -20" to="130 40" dur="3.2s" repeatCount="indefinite"/></linearGradient>
@@ -97,6 +99,31 @@ export const DEFS = `
 
 // ---------- molduras ----------
 const ART = {
+  filigrana: () => {
+    const curls = `<path d="${brush(56, 1.6, 0, 360, { skew: 1, n: 90 })}" fill="url(#fr-lilac)"/>
+      <path d="M30 104 C 18 96 10 84 8 70 M92 14 C 102 20 110 30 113 42" fill="none" stroke="#efe6ff" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M8 70 C 2 64 6 56 12 60 M113 42 C 120 40 120 32 114 32" fill="none" stroke="#efe6ff" stroke-width="1.3" stroke-linecap="round"/>`;
+    return `<g filter="url(#fr-glow)">${curls}
+      ${frLeaf(6, 84, 11, 120, 'url(#fr-leaf)')}${frLeaf(40, 114, 11, 20, 'url(#fr-leaf)')}${frLeaf(108, 22, 10, -60, 'url(#fr-leaf)')}${frLeaf(84, 6, 10, 200, 'url(#fr-leaf)')}
+      ${frRose(18, 98, 13)}${frRose(40, 110, 9)}${frRose(6, 76, 8)}${frRose(102, 14, 10)}${frRose(116, 30, 6.5)}</g>
+      <g filter="url(#dk-glow)">${star(110, 96, 0.4, 'dk-tw t1')}${star(14, 30, 0.35, 'dk-tw t3')}</g>`;
+  },
+  lua: () => `<g filter="url(#dk-ink)">
+      <path d="${brush(56, 15, 95, 265, { wob: 1.5, freq: 6, skew: 1 })}" fill="url(#dk-moonrim)"/>
+      <path d="${brush(62, 4, 120, 230, { wob: 2 })}" fill="#0b0b10" opacity=".85"/>
+      <path d="${brush(50.5, 2.5, 105, 255)}" fill="#0b0b10" opacity=".7"/></g>
+      <circle cx="10" cy="44" r="2" fill="#0b0b10"/><circle cx="4" cy="70" r="1.4" fill="#0b0b10"/><circle cx="18" cy="104" r="1.6" fill="#e8ebf2"/>
+      <g filter="url(#dk-glow)">${star(104, 16, 0.4, 'dk-tw t2')}</g>`,
+  coelhinho: () => {
+    const ear = (x, rot) => `<g transform="translate(${x} 22) rotate(${rot})">
+      <path d="M0 0 C -9 -10 -9 -30 0 -36 C 9 -30 9 -10 0 0Z" fill="#0d0d10" stroke="#f4f4f6" stroke-width="1.2"/>
+      <path d="M0 -5 C -4.5 -12 -4.5 -26 0 -30 C 4.5 -26 4.5 -12 0 -5Z" fill="#ffd6e4"/></g>`;
+    const band = Array.from({ length: 11 }, (_, i) => { const a = rad(205 + i * 13); const [x, y] = P(a, 56); return `<circle cx="${f(x)}" cy="${f(y)}" r="4.2" fill="#f6f6f8" stroke="#0d0d10" stroke-width=".7"/>`; }).join('');
+    const pearls = Array.from({ length: 11 }, (_, i) => { const a = rad(205 + i * 13); const [x, y] = P(a, 50.5); return `<circle cx="${f(x)}" cy="${f(y)}" r="1.7" fill="#fff" stroke="#0d0d10" stroke-width=".5"/>`; }).join('');
+    const bow = (x, y, r) => `<g transform="translate(${x} ${y}) rotate(${r}) scale(.62)"><path d="M0 0 C -10 -10 -22 -8 -20 2 C -19 10 -8 8 0 0Z M0 0 C 10 -10 22 -8 20 2 C 19 10 8 8 0 0Z" fill="#0d0d10" stroke="#f4f4f6" stroke-width="1.6"/><circle r="3.6" fill="#f4f4f6" stroke="#0d0d10"/></g>`;
+    return `<g filter="url(#dk-shadow)">${ear(36, -22)}${ear(84, 22)}
+      <path d="${brush(53.5, 7, 200, 340, { skew: 1 })}" fill="#0d0d10"/>${band}${pearls}${bow(12, 36, -40)}${bow(108, 36, 40)}</g>`;
+  },
   tinta: () => `<g filter="url(#dk-ink)" class="dk-sway">
     <path d="${brush(55, 13, 140, 330, { wob: 1.5 })}" fill="url(#dk-cyan)"/>
     <path d="${brush(57, 9, -25, 115, { wob: 1.2, skew: 1.3 })}" fill="url(#dk-cyan)" opacity=".95"/>
@@ -188,6 +215,6 @@ export const hasDeco = (id) => !!ART[id];
 export function installDecoDefs() {
   if (document.getElementById('deco-defs')) return;
   const d = document.createElement('div');
-  d.innerHTML = `<svg id="deco-defs" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${DEFS}</defs></svg>`;
+  d.innerHTML = `<svg id="deco-defs" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${DEFS}${FRAME_DEFS}</defs></svg>`;
   document.body.appendChild(d.firstChild);
 }

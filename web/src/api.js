@@ -35,7 +35,7 @@ export const mapUser = (p) => ({
   id: p.id, username: p.username, displayName: p.display_name, avatar: p.avatar_url, color: p.color,
   chosenStatus: p.status, customStatus: p.custom_status, bio: p.bio,
   banner: p.banner_url || null, accent: p.accent_color || null, pronouns: p.pronouns || '', createdAt: Date.parse(p.created_at),
-  decoration: p.decoration || null, effect: p.profile_effect || null, items: p.items || [],
+  decoration: p.decoration || null, effect: p.profile_effect || null, frame: p.profile_frame || null, items: p.items || [],
 });
 const mapGroup = (g, members = []) => ({ id: g.id, name: g.name, icon: g.icon_url, ownerId: g.owner_id, members });
 export const mapMsg = (m) => ({
@@ -513,9 +513,10 @@ export async function updateProfile(patch) {
   if ('pronouns' in patch) row.pronouns = patch.pronouns.slice(0, 40);
   if ('decoration' in patch) row.decoration = patch.decoration;
   if ('effect' in patch) row.profile_effect = patch.effect;
+  if ('frame' in patch) row.profile_frame = patch.frame;
   if ('items' in patch) row.items = [...new Set(patch.items)];
   const res = await sb.from('profiles').update(row).eq('id', S.uid).select().single();
-  if (res.error && /decoration|profile_effect|items/.test(res.error.message)) throw new Error('A loja ainda não foi ativada no banco de dados.');
+  if (res.error && /decoration|profile_effect|profile_frame|items/.test(res.error.message)) throw new Error('A loja ainda não foi ativada no banco de dados.');
   const p = must(res);
   set((s) => { s.users = { ...s.users, [p.id]: mapUser(p) }; s.me = s.users[p.id]; });
   if ('status' in patch) trackPresence();

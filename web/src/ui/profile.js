@@ -4,6 +4,7 @@ import { Icon } from '../icons.js';
 import * as api from '../api.js';
 import { run, safe, toast, statusOf } from '../actions.js';
 import { ProfileEffect } from './shop.js';
+import { frameHtml, hasFrame } from '../framesart.js';
 import { Avatar, STATUS_LABEL, pickFile, shrinkImage, Field, GameCard } from './common.js';
 
 const SINCE = (ts) => (ts ? new Date(ts).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
@@ -12,7 +13,9 @@ const SINCE = (ts) => (ts ? new Date(ts).toLocaleDateString('pt-BR', { day: 'num
 export function ProfileCard({ u, status, children, avatarSlot, bannerSlot }) {
   const c1 = u.color || '#5e5ce6';
   const c2 = u.accent || c1;
+  const frame = hasFrame(u.frame) ? u.frame : null;
   return html`
+    <div class=${cx('pcard-outer', frame && 'framed')}>
     <div class="pcard" style=${`--pc1:${c1};--pc2:${c2}`}>
       <${ProfileEffect} effect=${u.effect} />
       <div class="pcard-banner">${u.banner ? html`<img src=${u.banner} alt="" />` : null}${bannerSlot}</div>
@@ -31,6 +34,8 @@ export function ProfileCard({ u, status, children, avatarSlot, bannerSlot }) {
           ${children ? html`<div class="pcard-actions">${children}</div>` : null}
         </div>
       </div>
+    </div>
+    ${frame ? html`<div class="pframe-host" dangerouslySetInnerHTML=${{ __html: frameHtml(frame) }}></div>` : null}
     </div>`;
 }
 

@@ -4,23 +4,27 @@ import { Icon } from '../icons.js';
 import * as api from '../api.js';
 import { run } from '../actions.js';
 import { Avatar } from './common.js';
-import { DECORATIONS, EFFECTS, itemId } from '../shop.js';
+import { DECORATIONS, EFFECTS, FRAMES, BUNDLES, itemId } from '../shop.js';
+import { frameHtml } from '../framesart.js';
 
 /** efeitos de perfil: camada por cima do cartão (partículas em SVG, posições fixas por índice) */
 const rnd = (i, k) => { const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
 const PETAL = '<svg viewBox="-6 -8 12 9"><path d="M0 0 C -4 -2 -5 -7 -1 -7.5 C 0 -6.5 1 -6.5 1.5 -7.5 C 5 -7 4 -2 0 0Z" fill="url(#dk-sakura)"/></svg>';
 const FLAKE = '<svg viewBox="-10 -10 20 20"><g stroke="#fff" stroke-width="1.3" stroke-linecap="round" fill="none">' +
   [0, 60, 120].map((a) => `<g transform="rotate(${a})"><path d="M0 -9V9M0 -6l-2.5 -2.5M0 -6l2.5 -2.5M0 6l-2.5 2.5M0 6l2.5 2.5"/></g>`).join('') + '</g></svg>';
+const HEART = '<svg viewBox="-8 -8 16 15"><path d="M0 6 C -9 0 -7 -8 -2.5 -6.5 C -1 -6 0 -4.5 0 -4.5 C 0 -4.5 1 -6 2.5 -6.5 C 7 -8 9 0 0 6Z" fill="var(--hc)" stroke="#0d0d10" stroke-width="1.2"/></svg>';
 const STAR = '<svg viewBox="-6 -6 12 12"><path d="M0 -6 L1.3 -1.3 L6 0 L1.3 1.3 L0 6 L-1.3 1.3 L-6 0 L-1.3 -1.3Z" fill="#fff"/></svg>';
 function fxHtml(effect) {
-  const N = { petalas: 18, neve: 22, bokeh: 14, estrelas: 22 }[effect] || 0;
-  const inner = { petalas: PETAL, neve: FLAKE, estrelas: STAR, bokeh: '' }[effect] ?? '';
+  const N = { petalas: 18, neve: 22, bokeh: 14, estrelas: 22, lilas: 20, nevoa: 16, noir: 14, ouro: 26 }[effect] || 0;
+  const inner = { petalas: PETAL, neve: FLAKE, estrelas: STAR, bokeh: '', lilas: STAR, nevoa: '', noir: HEART, ouro: '' }[effect] ?? '';
   let h = '';
   for (let i = 0; i < N; i++) {
-    const st = `--x:${(rnd(i, 1) * 100).toFixed(1)}%;--y:${(rnd(i, 2) * 100).toFixed(1)}%;--d:${(-rnd(i, 3) * 10).toFixed(2)}s;--t:${(6 + rnd(i, 4) * 6).toFixed(2)}s;--z:${(0.55 + rnd(i, 5) * 0.9).toFixed(2)};--h:${Math.round(rnd(i, 6) * 360)};--r:${Math.round(rnd(i, 7) * 360)}deg`;
+    const st = `--x:${(rnd(i, 1) * 100).toFixed(1)}%;--y:${(rnd(i, 2) * 100).toFixed(1)}%;--d:${(-rnd(i, 3) * 10).toFixed(2)}s;--t:${(6 + rnd(i, 4) * 6).toFixed(2)}s;--z:${(0.55 + rnd(i, 5) * 0.9).toFixed(2)};--h:${Math.round(rnd(i, 6) * 360)};--r:${Math.round(rnd(i, 7) * 360)}deg;--hc:${i % 2 ? '#f4f4f6' : '#0d0d10'}`;
     h += `<i style="${st}">${inner}</i>`;
   }
   if (effect === 'estrelas') h += '<b class="shoot"></b><b class="shoot s2"></b>';
+  if (effect === 'nevoa') h = '<b class="fog f1"></b><b class="fog f2"></b><b class="fog f3"></b>' + h;
+  if (effect === 'lilas') h = '<b class="glowb g1"></b><b class="glowb g2"></b>' + h;
   if (effect === 'aurora') h = '<i class="a1"></i><i class="a2"></i><i class="a3"></i>';
   if (effect === 'jardim') {
     const corner = (cls, flip) => `<svg class="garden ${cls}" viewBox="0 0 120 70"${flip ? ' style="transform:scaleX(-1)"' : ''}><g filter="url(#dk-shadow)">
@@ -48,44 +52,71 @@ export function ProfileEffect({ effect }) {
   return html`<div class=${'pfx pfx-' + effect} aria-hidden="true" dangerouslySetInnerHTML=${{ __html: fxCache.get(effect) }}></div>`;
 }
 
-/** loja: resgatar (grátis) e usar molduras e efeitos */
+/** cartão de perfil em miniatura com moldura, decoração e efeito (prévia da loja) */
+export function MiniCard({ me, deco, frame, effect, c1, c2 }) {
+  const u1 = c1 || me.color || '#5e5ce6', u2 = c2 || me.accent || u1;
+  return html`
+    <div class=${cx('pcard-outer mini', frame && 'framed')}>
+      <div class="pcard" style=${`--pc1:${u1};--pc2:${u2}`}>
+        <${ProfileEffect} effect=${effect} />
+        <div class="pcard-banner">${me.banner ? html`<img src=${me.banner} alt="" />` : null}</div>
+        <div class="pcard-av"><${Avatar} user=${me} id=${me.id} size=${58} deco=${deco ?? me.decoration} /></div>
+        <div class="pcard-body"><div class="pcard-panel"><div class="pcard-name">${me.displayName}</div><div class="pcard-user"><span>@${me.username}</span></div></div></div>
+      </div>
+      ${frame ? html`<div class="pframe-host" dangerouslySetInnerHTML=${{ __html: frameHtml(frame) }}></div>` : null}
+    </div>`;
+}
+
+/** loja: pacotes (tudo combinando), molduras de avatar, molduras de cartão e efeitos. Tudo grátis. */
 export function Shop() {
   const me = useS((s) => s.me);
-  const [kind, setKind] = useState('deco');
+  const [kind, setKind] = useState('pack');
   if (!me) return null;
   const owned = new Set(me.items || []);
-  const list = kind === 'deco' ? DECORATIONS : EFFECTS;
-  const using = kind === 'deco' ? me.decoration : me.effect;
-  const redeem = (it) => run(api.updateProfile({ items: [...owned, itemId(kind, it.id)] }), `${it.name} é sua!`);
-  const equip = (id) => run(api.updateProfile(kind === 'deco' ? { decoration: id } : { effect: id }), id ? 'Pronto, já está no seu perfil.' : 'Removido do perfil.');
+  const save = (patch, msg) => run(api.updateProfile(patch), msg);
+  const tabs = [['pack', 'Pacotes'], ['deco', 'Molduras de avatar'], ['frame', 'Cartões de perfil'], ['fx', 'Efeitos']];
+  const usingBundle = (b) => me.decoration === b.deco && me.frame === b.frame && me.effect === b.effect;
+  const Btn = ({ has, on, redeem, equip, unequip }) => (!has
+    ? html`<button class="gbtn sm primary wide" onClick=${redeem}><${Icon} n="gift" s=${14} /> Resgatar grátis</button>`
+    : on ? html`<button class="gbtn sm wide" onClick=${unequip}>Em uso · tirar</button>`
+    : html`<button class="gbtn sm wide ok" onClick=${equip}>Usar</button>`);
+  const single = (list, k, field, kindKey) => list.map((it) => {
+    const id = itemId(kindKey, it.id);
+    const has = owned.has(id), on = me[field] === it.id;
+    return html`
+      <div key=${it.id} class=${cx('shop-card', on && 'on')}>
+        <div class="shop-prev" style=${`--pc1:${me.color || '#5e5ce6'};--pc2:${me.accent || me.color || '#5e5ce6'}`}>
+          ${k === 'deco' ? html`<${Avatar} id=${me.id} size=${70} deco=${it.id} />`
+            : k === 'frame' ? html`<div class="shop-mini"><${MiniCard} me=${me} deco=${me.decoration} frame=${it.id} effect=${null} /></div>`
+            : html`<${ProfileEffect} effect=${it.id} /><${Avatar} id=${me.id} size=${52} />`}
+        </div>
+        <div class="shop-info"><b>${it.name}</b>${it.tag ? html`<span class="shop-tag">${it.tag}</span>` : null}<small class="muted">${it.desc}</small></div>
+        <${Btn} has=${has} on=${on} redeem=${() => save({ items: [...owned, id] }, `${it.name} é sua!`)}
+          equip=${() => save({ [field]: it.id }, 'Pronto, já está no seu perfil.')} unequip=${() => save({ [field]: null }, 'Removido do perfil.')} />
+      </div>`;
+  });
   return html`
     <div class="shop">
       <div class="shop-hero">
-        <div><h2>Loja</h2><p class="muted">Molduras animadas para a sua foto e efeitos para o seu perfil. Tudo grátis: é só resgatar.</p></div>
-        <div class="shop-me"><${Avatar} id=${me.id} size=${64} /></div>
+        <div><h2>Loja</h2><p class="muted">Pacotes com moldura de avatar, cartão de perfil e efeito animado. Tudo grátis: é só resgatar.</p></div>
       </div>
-      <div class="seg lg small-seg">
-        <button class=${kind === 'deco' ? 'on' : ''} onClick=${() => setKind('deco')}>Molduras de avatar</button>
-        <button class=${kind === 'fx' ? 'on' : ''} onClick=${() => setKind('fx')}>Efeitos de perfil</button>
-      </div>
-      <div class="shop-grid">
-        ${list.map((it) => {
-          const has = owned.has(itemId(kind, it.id));
-          const on = using === it.id;
+      <div class="seg lg small-seg shop-tabs">${tabs.map(([k, l]) => html`<button key=${k} class=${kind === k ? 'on' : ''} onClick=${() => setKind(k)}>${l}</button>`)}</div>
+      ${kind === 'pack' ? html`
+        <div class="bundle-grid">${BUNDLES.map((b) => {
+          const ids = [itemId('deco', b.deco), itemId('frame', b.frame), itemId('fx', b.effect)];
+          const has = ids.every((x) => owned.has(x));
+          const on = usingBundle(b);
           return html`
-            <div key=${it.id} class=${cx('shop-card', on && 'on')}>
-              <div class="shop-prev" style=${`--pc1:${me.color || '#5e5ce6'};--pc2:${me.accent || me.color || '#5e5ce6'}`}>
-                ${kind === 'deco' ? html`<${Avatar} id=${me.id} size=${72} deco=${it.id} />` : html`<${ProfileEffect} effect=${it.id} /><${Avatar} id=${me.id} size=${52} />`}
+            <div key=${b.id} class=${cx('bundle', on && 'on')} style=${`--b1:${b.c1};--b2:${b.c2}`}>
+              <div class="bundle-stage"><${MiniCard} me=${me} deco=${b.deco} frame=${b.frame} effect=${b.effect} c1=${b.c1} c2=${b.c2} /></div>
+              <div class="bundle-info">
+                <b>Pacote ${b.name}</b>
+                <small class="muted">Moldura de avatar, cartão de perfil e efeito · 3 itens</small>
+                ${on ? html`<button class="gbtn sm wide" onClick=${() => save({ decoration: null, frame: null, effect: null }, 'Pacote removido do perfil.')}>Em uso · tirar</button>`
+                  : html`<button class="gbtn sm wide primary" onClick=${() => save({ items: [...owned, ...ids], decoration: b.deco, frame: b.frame, effect: b.effect }, has ? 'Pacote aplicado!' : `Pacote ${b.name} é seu!`)}><${Icon} n="gift" s=${14} /> ${has ? 'Usar pacote' : 'Resgatar e usar'}</button>`}
               </div>
-              <div class="shop-info">
-                <b>${it.name}</b>${it.tag ? html`<span class="shop-tag">${it.tag}</span>` : null}
-                <small class="muted">${it.desc}</small>
-              </div>
-              ${!has ? html`<button class="gbtn sm primary wide" onClick=${() => redeem(it)}><${Icon} n="gift" s=${14} /> Resgatar grátis</button>`
-                : on ? html`<button class="gbtn sm wide" onClick=${() => equip(null)}>Em uso · tirar</button>`
-                : html`<button class="gbtn sm wide ok" onClick=${() => equip(it.id)}>Usar</button>`}
             </div>`;
-        })}
-      </div>
+        })}</div>`
+      : html`<div class=${cx('shop-grid', kind === 'frame' && 'wide')}>${kind === 'deco' ? single(DECORATIONS, 'deco', 'decoration', 'deco') : kind === 'frame' ? single(FRAMES, 'frame', 'frame', 'frame') : single(EFFECTS, 'fx', 'effect', 'fx')}</div>`}
     </div>`;
 }

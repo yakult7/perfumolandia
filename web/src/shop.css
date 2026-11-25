@@ -83,3 +83,67 @@
 .rc-bar { position: absolute; top: calc(10px + var(--safe-t)); left: 50%; translate: -50% 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 5px 5px 5px 8px; border-radius: 999px; color: #fff; font-size: 13px; --glass-tint: rgba(20, 20, 26, 0.7); opacity: 0.35; transition: opacity 0.2s; }
 .rc-bar:hover { opacity: 1; }
 .rc-wait { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+
+/* =====================================================================
+   MOLDURA DO CARTÃO DE PERFIL
+   ===================================================================== */
+.pcard-outer { position: relative; }
+.pcard-outer.framed { margin: 46px 10px 22px; }
+.pframe-host { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.pframe { position: absolute; inset: 0; }
+.pframe .fr-top { position: absolute; left: -7%; width: 114%; top: 0; translate: 0 -66%; height: auto; overflow: visible; }
+.pframe .fr-bottom { position: absolute; left: -5%; width: 110%; bottom: 0; translate: 0 25%; height: auto; overflow: visible; }
+.pframe .fr-side { position: absolute; top: 18px; bottom: 10px; height: auto; }
+.pframe .fr-side.l { left: -11px; }
+.pframe .fr-side.r { right: -11px; transform: scaleX(-1); }
+.pframe svg { display: block; }
+.fr-tw { transform-box: fill-box; transform-origin: center; animation: dk-tw 2.4s ease-in-out infinite; }
+.fr-tw.b { animation-delay: -0.8s; } .fr-tw.c { animation-delay: -1.6s; }
+.fr-breathe { animation: fr-breathe 4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes fr-breathe { 0%, 100% { opacity: 0.65; transform: scale(0.96); } 50% { opacity: 1; transform: scale(1.06); } }
+.fr-petal { transform-box: fill-box; opacity: 0; animation: fr-petal 6s linear infinite; }
+.fr-petal.q1 { animation-delay: -1.5s; } .fr-petal.q2 { animation-delay: -3s; } .fr-petal.q3 { animation-delay: -4.5s; }
+@keyframes fr-petal { 0% { transform: translate(60px, 30px) rotate(0); opacity: 0; } 10% { opacity: 1; } 100% { transform: translate(110px, 96px) rotate(300deg); opacity: 0; } }
+.fr-petal.q1, .fr-petal.q3 { animation-name: fr-petal-r; }
+@keyframes fr-petal-r { 0% { transform: translate(260px, 30px) rotate(0); opacity: 0; } 10% { opacity: 1; } 100% { transform: translate(214px, 96px) rotate(-300deg); opacity: 0; } }
+.profile-modal .modal-body { overflow: visible; }
+.profile-modal.modal { overflow: visible; }
+
+/* novos efeitos */
+.pfx-lilas > i { top: var(--y); width: 9px; height: 9px; animation-name: pfx-twinkle; animation-duration: calc(var(--t) * 0.4); filter: drop-shadow(0 0 4px #d9c8ff); }
+.pfx-lilas > i svg path { fill: #f1eaff; }
+.pfx .glowb { position: absolute; width: 60%; height: 40%; border-radius: 50%; background: radial-gradient(circle, rgba(214, 196, 255, 0.45), transparent 70%); filter: blur(10px); animation: pfx-drift 8s ease-in-out infinite; }
+.pfx .glowb.g1 { left: -10%; top: 10%; } .pfx .glowb.g2 { right: -10%; bottom: 10%; animation-delay: -4s; }
+.pfx-nevoa > i { width: 3px; height: 3px; border-radius: 50%; background: #c8ccd4; opacity: 0.7; animation-duration: calc(var(--t) * 1.6); }
+.pfx .fog { position: absolute; left: -40%; width: 180%; height: 40%; background: radial-gradient(ellipse at center, rgba(210, 218, 232, 0.35), transparent 65%); filter: blur(8px); animation: pfx-fog 14s linear infinite; }
+.pfx .fog.f1 { top: 5%; } .pfx .fog.f2 { top: 40%; animation-duration: 19s; animation-direction: reverse; opacity: 0.8; } .pfx .fog.f3 { top: 70%; animation-duration: 24s; }
+@keyframes pfx-fog { from { transform: translateX(-20%); } to { transform: translateX(20%); } }
+.pfx-noir > i { top: auto; bottom: -8%; width: 13px; height: 12px; animation-name: pfx-rise-pct; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4)); }
+@keyframes pfx-rise-pct { 0% { bottom: -8%; transform: translateX(0) rotate(-10deg); opacity: 0; } 12% { opacity: 1; } 100% { bottom: 104%; transform: translateX(18px) rotate(15deg); opacity: 0; } }
+.pfx-ouro > i { width: 4px; height: 4px; border-radius: 1px; background: linear-gradient(135deg, #fff6c9, #e9b93a 50%, #8a6214); box-shadow: 0 0 5px rgba(255, 214, 102, 0.8); animation-name: pfx-confetti; animation-duration: calc(var(--t) * 1.2); }
+.pfx-ouro > i:nth-child(3n) { width: 6px; height: 6px; clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); background: #fff3c4; }
+@keyframes pfx-confetti { 0% { top: -6%; transform: translateX(0) rotate(0); opacity: 0; } 10% { opacity: 1; } 100% { top: 104%; transform: translateX(-30px) rotate(720deg); opacity: 0; } }
+
+/* loja em pacotes */
+.shop-tabs button { flex: 1; white-space: nowrap; }
+.bundle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.bundle { display: flex; flex-direction: column; border-radius: 20px; overflow: hidden; background: var(--fill-2); box-shadow: inset 0 0 0 0.5px var(--line); }
+.bundle.on { box-shadow: inset 0 0 0 2px var(--accent); }
+.bundle-stage { position: relative; display: grid; place-items: center; padding: 58px 26px 30px; background: radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--b2) 70%, #000), var(--b1)); min-height: 300px; }
+.bundle-stage .pcard-outer { width: 190px; margin: 0; }
+.bundle-info { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
+.bundle-info b { font-size: 14.5px; }
+.pcard-outer.mini .pcard-banner { height: 62px; }
+.pcard-outer.mini .pcard-av { top: 30px; left: 10px; padding: 4px; }
+.pcard-outer.mini .pcard-body { padding: 40px 10px 10px; }
+.pcard-outer.mini .pcard-panel { padding: 8px 10px; }
+.pcard-outer.mini .pcard-name { font-size: 14px; }
+.pcard-outer.mini .pcard-user { font-size: 11px; }
+.shop-grid.wide { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.shop-mini { width: 150px; padding-top: 30px; }
+.shop-mini .pcard-outer { margin: 0; }
+.shop-card .shop-prev:has(.shop-mini) { height: 200px; }
+/* perfil com moldura: o cartão flutua sozinho (sem a caixa do modal atrás) */
+.profile-modal:has(.pcard-outer.framed) { background: transparent; box-shadow: none; }
+.profile-modal:has(.pcard-outer.framed)::before, .profile-modal:has(.pcard-outer.framed)::after { display: none; }
+.profile-modal:has(.pcard-outer.framed) .modal-head { top: -38px; right: -6px; }
