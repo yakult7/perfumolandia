@@ -6,13 +6,46 @@ import { run } from '../actions.js';
 import { Avatar } from './common.js';
 import { DECORATIONS, EFFECTS, itemId } from '../shop.js';
 
-/** partículas do efeito de perfil (posições fixas por índice para não "pular" a cada render) */
-const N = 16;
+/** efeitos de perfil: camada por cima do cartão (partículas em SVG, posições fixas por índice) */
 const rnd = (i, k) => { const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
+const PETAL = '<svg viewBox="-6 -8 12 9"><path d="M0 0 C -4 -2 -5 -7 -1 -7.5 C 0 -6.5 1 -6.5 1.5 -7.5 C 5 -7 4 -2 0 0Z" fill="url(#dk-sakura)"/></svg>';
+const FLAKE = '<svg viewBox="-10 -10 20 20"><g stroke="#fff" stroke-width="1.3" stroke-linecap="round" fill="none">' +
+  [0, 60, 120].map((a) => `<g transform="rotate(${a})"><path d="M0 -9V9M0 -6l-2.5 -2.5M0 -6l2.5 -2.5M0 6l-2.5 2.5M0 6l2.5 2.5"/></g>`).join('') + '</g></svg>';
+const STAR = '<svg viewBox="-6 -6 12 12"><path d="M0 -6 L1.3 -1.3 L6 0 L1.3 1.3 L0 6 L-1.3 1.3 L-6 0 L-1.3 -1.3Z" fill="#fff"/></svg>';
+function fxHtml(effect) {
+  const N = { petalas: 18, neve: 22, bokeh: 14, estrelas: 22 }[effect] || 0;
+  const inner = { petalas: PETAL, neve: FLAKE, estrelas: STAR, bokeh: '' }[effect] ?? '';
+  let h = '';
+  for (let i = 0; i < N; i++) {
+    const st = `--x:${(rnd(i, 1) * 100).toFixed(1)}%;--y:${(rnd(i, 2) * 100).toFixed(1)}%;--d:${(-rnd(i, 3) * 10).toFixed(2)}s;--t:${(6 + rnd(i, 4) * 6).toFixed(2)}s;--z:${(0.55 + rnd(i, 5) * 0.9).toFixed(2)};--h:${Math.round(rnd(i, 6) * 360)};--r:${Math.round(rnd(i, 7) * 360)}deg`;
+    h += `<i style="${st}">${inner}</i>`;
+  }
+  if (effect === 'estrelas') h += '<b class="shoot"></b><b class="shoot s2"></b>';
+  if (effect === 'aurora') h = '<i class="a1"></i><i class="a2"></i><i class="a3"></i>';
+  if (effect === 'jardim') {
+    const corner = (cls, flip) => `<svg class="garden ${cls}" viewBox="0 0 120 70"${flip ? ' style="transform:scaleX(-1)"' : ''}><g filter="url(#dk-shadow)">
+      <path d="M0 30 C 30 26 52 14 70 0" fill="none" stroke="url(#dk-silverleaf)" stroke-width="2.4"/>
+      <path d="M0 44 C 18 40 30 34 40 26" fill="none" stroke="url(#dk-silverleaf)" stroke-width="1.6"/>
+      ${roseSvg(26, 18, 15)}${roseSvg(58, 6, 10)}${roseSvg(6, 36, 9)}${roseSvg(42, 30, 7)}</g>
+      <rect width="120" height="70" fill="url(#dk-shine)" opacity=".3"/></svg>`;
+    h = corner('l', false) + corner('r', true);
+  }
+  return h;
+}
+function roseSvg(cx, cy, s) {
+  let d = '';
+  for (let i = 0; i < 9; i++) {
+    const a = i * 2.4, r = s * (0.25 + i * 0.085);
+    const x = cx + Math.cos(a) * r * 0.35, y = cy + Math.sin(a) * r * 0.35;
+    d += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${r.toFixed(1)}" ry="${(r * 0.72).toFixed(1)}" transform="rotate(${((a * 180) / Math.PI).toFixed(0)} ${x.toFixed(1)} ${y.toFixed(1)})" fill="url(#dk-silver)" stroke="rgba(40,40,60,.45)" stroke-width=".5"/>`;
+  }
+  return d;
+}
+const fxCache = new Map();
 export function ProfileEffect({ effect }) {
   if (!effect) return null;
-  return html`<div class=${'pfx pfx-' + effect} aria-hidden="true">${Array.from({ length: N }, (_, i) => html`
-    <i key=${i} style=${`--x:${(rnd(i, 1) * 100).toFixed(1)}%;--y:${(rnd(i, 2) * 100).toFixed(1)}%;--d:${(rnd(i, 3) * 6).toFixed(2)}s;--t:${(4 + rnd(i, 4) * 5).toFixed(2)}s;--z:${(0.6 + rnd(i, 5) * 0.8).toFixed(2)};--h:${Math.round(rnd(i, 6) * 360)}`}></i>`)}</div>`;
+  if (!fxCache.has(effect)) fxCache.set(effect, fxHtml(effect));
+  return html`<div class=${'pfx pfx-' + effect} aria-hidden="true" dangerouslySetInnerHTML=${{ __html: fxCache.get(effect) }}></div>`;
 }
 
 /** loja: resgatar (grátis) e usar molduras e efeitos */

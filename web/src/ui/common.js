@@ -3,6 +3,7 @@ import { useS, S } from '../store.js';
 import { Icon } from '../icons.js';
 import { closeModal, statusOf } from '../actions.js';
 import { optimizeImage } from '../media.js';
+import { decoSvg, hasDeco } from '../decoart.js';
 
 export const initials = (name = '?') => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
@@ -16,7 +17,7 @@ export function Avatar({ id, size = 36, status = false, ring = false, user: u0, 
     <span class=${cx('avatar', speaking && 'speaking')} style=${`--s:${size}px;--c:${u?.color || '#7c5cff'}`}>
       ${u?.avatar ? html`<img src=${u.avatar} alt="" loading="lazy" draggable="false" />` : html`<b>${initials(name)}</b>`}
       ${status ? html`<i class=${'dot st-' + st} title=${STATUS_LABEL[st]}></i>` : null}
-      ${deco && size >= 24 ? html`<i class=${'deco deco-' + deco} aria-hidden="true"></i>` : null}
+      ${deco && size >= 24 && hasDeco(deco) ? html`<span class="deco" dangerouslySetInnerHTML=${{ __html: decoSvg(deco) }}></span>` : null}
     </span>`;
 }
 export const STATUS_LABEL = { online: 'Online', idle: 'Ausente', dnd: 'Não perturbe', invisible: 'Invisível', offline: 'Offline' };

@@ -20,6 +20,7 @@ function App() {
 }
 
 applyTheme();
+import('./decoart.js').then((m) => m.installDecoDefs());
 document.documentElement.classList.toggle('native', isNativeApp);
 if (window.perfumolandiaDesktop) {
   document.documentElement.classList.add('desktop-app');
