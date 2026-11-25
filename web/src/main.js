@@ -51,8 +51,12 @@ addEventListener('blur', setIdle);
 document.addEventListener('visibilitychange', setIdle);
 setIdle();
 subscribe(setIdle);
-// PC fraco: supressão de ruído básica (a de IA pesa em processador antigo), só se a pessoa nunca escolheu
-if (weakPC() && !localStorage.getItem('rs.noiseChosen')) { setSettings({ noiseMode: 'basic' }); localStorage.setItem('rs.noiseChosen', '1'); }
+// a 1.10 trocava PCs de 4 núcleos para a supressão básica e o áudio piorou: volta todo mundo que foi trocado para a de IA
+if (!localStorage.getItem('rs.noiseFix') ) {
+  if (localStorage.getItem('rs.noiseChosen') && S.settings.noiseMode === 'basic') setSettings({ noiseMode: 'smart' });
+  localStorage.removeItem('rs.noiseChosen');
+  localStorage.setItem('rs.noiseFix', '1');
+}
 import('./decoart.js').then((m) => m.installDecoDefs());
 import('./nameplates.js').then((m) => m.installNameplates());
 document.documentElement.classList.toggle('native', isNativeApp);

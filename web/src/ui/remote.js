@@ -61,12 +61,14 @@ function RemoteView({ r }) {
   const pending = useRef(null);
 
   useEffect(() => { const v = vref.current; if (v && v.srcObject !== remoteStream()) v.srcObject = remoteStream(); }, [r.v, r.state]);
-  // no app do PC abre em tela cheia: a tela do amigo inteira, sem a sua barra de tarefas cortando a parte de baixo
+  // no app do PC: janela maximizada (sua barra de tarefas continua aí) e o teclado todo — Alt+Tab, tecla Windows —
+  // vai para o PC do amigo enquanto esta janela estiver em foco; clicou na sua barra, volta a ser seu
   useEffect(() => {
     const d = window.perfumolandiaDesktop;
-    if (!d?.setFullScreen) return;
-    d.setFullScreen(true);
-    return () => { d.setFullScreen(false); };
+    if (!d?.rcViewer) return;
+    d.onRcKey?.((k) => sendInput({ t: 'ks', scan: k.scan, ext: k.ext, down: k.down }));
+    d.rcViewer(true);
+    return () => { d.onRcKey?.(null); d.rcViewer(false); };
   }, []);
 
   // posição na imagem (o vídeo fica "contain": desconta as faixas pretas)

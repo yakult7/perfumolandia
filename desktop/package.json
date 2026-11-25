@@ -1,7 +1,7 @@
 {
   "name": "perfumolandia-desktop",
   "productName": "Perfumolandia",
-  "version": "1.10.0",
+  "version": "1.10.1",
   "description": "Perfumolandia para Windows",
   "main": "main.js",
   "private": true,
@@ -27,7 +27,8 @@
     "extraResources": [
       { "from": "audiocap.exe", "to": "audiocap.exe" },
       { "from": "inputctl.exe", "to": "inputctl.exe" },
-      { "from": "procwatch.exe", "to": "procwatch.exe" }
+      { "from": "procwatch.exe", "to": "procwatch.exe" },
+      { "from": "kbhook.exe", "to": "kbhook.exe" }
     ],
     "directories": {
       "output": "release"

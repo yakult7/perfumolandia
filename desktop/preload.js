@@ -9,6 +9,8 @@ let musicCb = null;
 let updCb = null;
 ipcRenderer.on('update-ready', (e, v) => updCb?.(v));
 let rcStopCb = null;
+let rcKeyCb = null;
+ipcRenderer.on('rc-key', (e, k) => rcKeyCb?.(k));
 ipcRenderer.on('rc-stop', () => rcStopCb?.());
 ipcRenderer.on('music', (e, m) => musicCb?.(m));
 let inviteCb = null;
@@ -45,6 +47,8 @@ contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
   rcInput: (m) => ipcRenderer.send('rc:input', m),
   rcStop: () => ipcRenderer.invoke('rc:stop'),
   setFullScreen: (on) => ipcRenderer.invoke('win:fullscreen', !!on),
+  rcViewer: (on) => ipcRenderer.invoke('rc:viewer', !!on),
+  onRcKey: (cb) => { rcKeyCb = cb; },
   onRcStop: (cb) => { rcStopCb = cb; },
   onGame: (cb) => { gameCb = cb; },
 });

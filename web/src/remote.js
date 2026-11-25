@@ -38,7 +38,8 @@ export async function acceptControl() {
   if (!info?.sourceId) { api.sendEvent({ type: 'rc-deny', to: inc.from, id: inc.id, why: 'erro' }); return toast('Não deu para liberar o controle neste PC.', 'err'); }
   try {
     await d.selectSource(info.sourceId, false);
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 }, width: { max: 1920 }, height: { max: 1080 } }, audio: false });
+    // tela inteira na resolução real dele (limitar a 1920x1080 cortava a parte de baixo em telas maiores ou 16:10)
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } }, audio: false });
   } catch {
     d.rcStop();
     api.sendEvent({ type: 'rc-deny', to: inc.from, id: inc.id, why: 'erro' });
@@ -49,7 +50,9 @@ export async function acceptControl() {
   v.addEventListener('ended', () => stopControl());
   setRemote({ role: 'host', peer: inc.from, id: inc.id, state: 'connecting' });
   pc = newPc(inc.from, inc.id);
-  pc.addTransceiver(v, { direction: 'sendonly', streams: [stream], sendEncodings: [{ maxBitrate: 8_000_000, maxFramerate: 30 }] });
+  const vs = v.getSettings();
+  const down = Math.max(1, (vs.height || 1080) / 1440);
+  pc.addTransceiver(v, { direction: 'sendonly', streams: [stream], sendEncodings: [{ maxBitrate: 8_000_000, maxFramerate: 30, scaleResolutionDownBy: down }] });
   dc = pc.createDataChannel('input', { ordered: true });
   dc.onmessage = (e) => { try { d.rcInput(JSON.parse(e.data)); } catch {} };
   dc.onopen = () => S.remote && setRemote({ ...S.remote, state: 'live' });

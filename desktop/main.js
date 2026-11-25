@@ -285,6 +285,7 @@ ipcMain.on('rc:input', (e, m) => {
     case 'd': case 'u': w(`${m.t} ${[0, 1, 2].includes(m.b) ? m.b : 0}`); break;
     case 'w': w(`w ${Math.max(-1200, Math.min(1200, Math.round(m.d) || 0))}`); break;
     case 'h': w(`h ${Math.max(-1200, Math.min(1200, Math.round(m.d) || 0))}`); break;
+    case 'ks': w(`k ${(+m.scan || 0) & 0xff} ${m.ext ? 1 : 0} ${m.down ? 1 : 0}`); break; // tecla vinda do kbhook do outro lado
     case 'k': {
       const kc = codeToUiohook(String(m.code || ''));
       if (kc == null) return;
@@ -296,6 +297,41 @@ ipcMain.on('rc:input', (e, m) => {
 ipcMain.handle('rc:stop', () => stopRemote());
 // tela cheia da janela (acesso remoto: a tela do amigo inteira, sem a barra de tarefas cobrindo)
 ipcMain.handle('win:fullscreen', (e, on) => { if (win) win.setFullScreen(!!on); return !!on; });
+
+// quem controla: janela maximizada (sua barra de tarefas visível) e o teclado inteiro (Alt+Tab, Windows...) indo
+// para o PC do amigo enquanto esta janela estiver em foco — kbhook.exe intercepta e o app repassa
+let kb = null, maximizedByRc = false;
+ipcMain.handle('rc:viewer', (e, on) => {
+  if (!win) return false;
+  if (on) {
+    if (!win.isMaximized() && !win.isFullScreen()) { win.maximize(); maximizedByRc = true; }
+    const exe = app.isPackaged ? path.join(process.resourcesPath, 'kbhook.exe') : path.join(__dirname, 'kbhook.exe');
+    if (process.platform === 'win32' && fs.existsSync(exe) && !kb) {
+      const hwnd = win.getNativeWindowHandle();
+      const id = hwnd.length >= 8 ? hwnd.readBigUInt64LE(0) : BigInt(hwnd.readUInt32LE(0));
+      kb = spawn(exe, [id.toString()], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+      kb.stdout.setEncoding('utf8');
+      let buf = '';
+      kb.stdout.on('data', (d) => {
+        buf += d;
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const [, scan, ext, down] = buf.slice(0, i).trim().split(' ');
+          buf = buf.slice(i + 1);
+          if (!e.sender.isDestroyed()) e.sender.send('rc-key', { scan: +scan, ext: ext === '1', down: down === '1' });
+        }
+      });
+      kb.on('exit', () => { kb = null; });
+      kb.stdin.write('on\n');
+    }
+    return !!kb;
+  }
+  if (kb) { try { kb.stdin.end(); kb.kill(); } catch {} kb = null; }
+  if (maximizedByRc && win.isMaximized()) win.unmaximize();
+  maximizedByRc = false;
+  return false;
+});
+app.on('will-quit', () => { try { kb?.kill(); } catch {} });
 app.on('will-quit', stopRemote);
 ipcMain.handle('music:get', () => currentMusic);
 
