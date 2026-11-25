@@ -59,9 +59,16 @@ function backgroundChecks(onReady) {
   autoUpdater.removeAllListeners();
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('update-downloaded', (info) => { readyVersion = info.version; onReady?.(info.version); });
-  const check = () => autoUpdater.checkForUpdates().catch(() => {});
-  setTimeout(check, 3 * 60 * 1000);
-  setInterval(check, 30 * 60 * 1000);
+  // procura 1 min depois de abrir, a cada 10 min e sempre que você volta para a janela (no máximo 1x a cada 2 min)
+  let lastCheck = 0;
+  const check = () => {
+    if (readyVersion || Date.now() - lastCheck < 2 * 60 * 1000) return;
+    lastCheck = Date.now();
+    autoUpdater.checkForUpdates().catch(() => {});
+  };
+  setTimeout(check, 60 * 1000);
+  setInterval(check, 10 * 60 * 1000);
+  app.on('browser-window-focus', check);
 }
 const updateReady = () => readyVersion;
 const installNow = () => { if (readyVersion && autoUpdater) autoUpdater.quitAndInstall(true, true); };
