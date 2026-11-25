@@ -151,6 +151,8 @@ export async function callDM(dmId) {
   if (S.outgoing?.dmId === dmId) set((s) => { s.outgoing = { ...s.outgoing, msgId: log?.id || null }; });
   const ring = () => api.sendEvent({ type: 'ring', dmId, to, msgId: log?.id || null });
   ring();
+  // faz tocar também nos celulares com o app fechado
+  import('./push.js').then((p) => p.callPush(dmId, 'ring'));
   // reenvia o toque a cada 8s (caso a pessoa abra o app depois)
   const again = setInterval(() => {
     if (S.outgoing?.dmId !== dmId) return clearInterval(again);
@@ -168,6 +170,7 @@ export function cancelOutgoing() {
   if (!o) return;
   const to = roomMembers(o.dmId).filter((m) => m !== S.uid);
   api.sendEvent({ type: 'ring-cancel', dmId: o.dmId, to });
+  import('./push.js').then((p) => p.callPush(o.dmId, 'cancel'));
   if (o.msgId) api.setCallStatus(o.msgId, 'missed');
   sounds.stopRing();
   set((s) => { s.outgoing = null; });

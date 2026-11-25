@@ -576,3 +576,25 @@ end $$;
 revoke all on function public.finish_email_change() from public;
 grant execute on function public.finish_email_change() to authenticated;
 
+
+-- ---------- avisos de ligação no celular (push) ----------
+-- web: iPhone/Android com o app na tela inicial (Web Push); fcm: app Android (APK)
+create table if not exists public.push_subs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references public.profiles on delete cascade,
+  kind text not null check (kind in ('web', 'fcm')),
+  token text not null unique,          -- endpoint (web) ou token do Firebase (fcm)
+  keys jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+alter table public.push_subs enable row level security;
+drop policy if exists "push own" on public.push_subs;
+create policy "push own" on public.push_subs for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+-- o mesmo aparelho trocou de conta: passa a inscrição para a conta nova
+create or replace function public.save_push_sub(p_kind text, p_token text, p_keys jsonb) returns void
+language sql security definer set search_path = public as $$
+  insert into push_subs (user_id, kind, token, keys) values (auth.uid(), p_kind, p_token, coalesce(p_keys, '{}'::jsonb))
+  on conflict (token) do update set user_id = auth.uid(), kind = excluded.kind, keys = excluded.keys, created_at = now();
+$$;
+revoke all on function public.save_push_sub(text, text, jsonb) from public;
+grant execute on function public.save_push_sub(text, text, jsonb) to authenticated;

@@ -11,7 +11,7 @@ import { Avatar, GBtn, Toasts, STATUS_LABEL, useNow, fmtDur, initials, Activity 
 import { Chat } from './chat.js';
 import { CallStage, MiniCall, Theater } from './call.js';
 import { Friends, DMList } from './home.js';
-import { Modals, IncomingCall, InstallBanner } from './modals.js';
+import { Modals, IncomingCall, InstallBanner, PushBanner } from './modals.js';
 import { RemoteLayer } from './remote.js';
 import { ProfilePopover, ProfilePanel } from './popover.js';
 import { ShopPage } from './shop.js';
@@ -36,7 +36,8 @@ export function Shell() {
     ${menu ? html`<${GlassMenu} key=${menu.key} menu=${menu} onClose=${closeMenu} />` : null}
     ${audioBlocked ? html`<button class="gbtn primary audio-unlock" onClick=${rtc.unlockAudio}><${Icon} n="volume" /> Toque para ativar o som da chamada</button>` : null}
     <${Toasts} />
-    <${InstallBanner} />`;
+    <${InstallBanner} />
+    <${PushBanner} />`;
 }
 
 // ===================== desktop =====================

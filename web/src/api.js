@@ -155,6 +155,7 @@ export async function start() {
   set((s) => { s.authed = true; s.booting = false; s.ready = true; s.needsProfile = false; });
   handleDeepLink();
   checkEmail().catch(() => {});
+  import('./push.js').then((p) => p.initPush((dmId) => go(null, dmId))).catch(() => {});
 }
 
 async function loadAll(uid) {

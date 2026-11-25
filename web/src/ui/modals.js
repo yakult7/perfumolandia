@@ -13,6 +13,7 @@ import { ScreenShareModal, VolumeModal } from './call.js';
 import { Settings } from './settings.js';
 import { EmojiPicker, QUICK } from './chat.js';
 import { isNativeApp } from '../native.js';
+import { pushSupported, pushPermission, enablePush } from '../push.js';
 
 export function Modals() {
   const m = useS((s) => s.ui.modal);
@@ -352,6 +353,36 @@ export function InstallBanner() {
       <${Icon} n="download" s=${20} />
       <span>Instale a Perfumolandia na tela de início para receber chamadas e usar em tela cheia.</span>
       <button class="gbtn sm primary" onClick=${() => (deferredPrompt ? deferredPrompt.prompt() : import('../actions.js').then((a) => a.openModal('install')))}>Instalar</button>
+      <button class="mini-btn" onClick=${dismiss} aria-label="Fechar"><${Icon} n="x" s=${16} /></button>
+    </div>`;
+}
+
+/** celular: pede para ligar os avisos de ligação (tocar com o app fechado) */
+export function PushBanner() {
+  const ready = useS((s) => s.ready);
+  const ok = useS((s) => s.ui.pushOk);
+  const inCall = useS((s) => !!s.call && s.ui.callOpen !== false);
+  const [hidden, setHidden] = useState(() => { try { return Date.now() - Number(localStorage.getItem('rs.pushHidden') || 0) < 3 * 864e5; } catch { return false; } });
+  const [busy, setBusy] = useState(false);
+  if (!pushSupported || !ready || ok || hidden || inCall || pushPermission() === 'granted') return null;
+  const denied = pushPermission() === 'denied';
+  const dismiss = () => { setHidden(true); try { localStorage.setItem('rs.pushHidden', String(Date.now())); } catch {} };
+  const on = async () => {
+    setBusy(true);
+    try {
+      if (await enablePush()) toast('Pronto! Seu celular vai tocar quando te ligarem.');
+      else toast('Permita as notificações para o celular tocar nas ligações.');
+    } catch (e) {
+      if (/firebase/i.test(e.message)) { toast('Os avisos de ligação chegam na próxima versão do app.'); setHidden(true); }
+      else toast('Não deu para ativar: ' + e.message);
+    } finally { setBusy(false); }
+  };
+  return html`
+    <div class="install lg pop">
+      <${Icon} n="phone" s=${20} />
+      <span>${denied ? 'As notificações estão bloqueadas. Libere nos ajustes do celular para tocar quando te ligarem.'
+        : 'Ative as notificações para o celular tocar quando te ligarem, mesmo com o app fechado.'}</span>
+      ${denied ? null : html`<button class="gbtn sm primary" disabled=${busy} onClick=${on}>Ativar</button>`}
       <button class="mini-btn" onClick=${dismiss} aria-label="Fechar"><${Icon} n="x" s=${16} /></button>
     </div>`;
 }

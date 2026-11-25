@@ -1,5 +1,5 @@
 // Service worker da Perfumolandia: abre mesmo sem internet (última versão) e mantém tudo atualizado.
-const CACHE = 'perfumolandia-v3';
+const CACHE = 'perfumolandia-v4';
 const SHELL = ['./', './app/', './manifest.webmanifest', './icons/icon-192.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
@@ -42,5 +42,27 @@ self.addEventListener('notificationclick', (e) => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const w of wins) if ('focus' in w) { w.postMessage({ type: 'open', url }); return w.focus(); }
     return self.clients.openWindow(url);
+  })());
+});
+
+// ligação com o app fechado: o servidor (função call-push) manda o aviso e aqui vira notificação
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data?.json() || {}; } catch {}
+  if (!d.dmId) return;
+  const tag = 'call-' + d.dmId;
+  const where = d.group ? ` em ${d.group}` : '';
+  e.waitUntil((async () => {
+    for (const n of await self.registration.getNotifications({ tag })) n.close();
+    if (d.type === 'cancel') {
+      return self.registration.showNotification('Chamada perdida', {
+        body: `${d.name || 'Alguém'} ligou${where}`, tag, icon: './icons/icon-192.png', badge: './icons/icon-192.png', data: { url: './app/' },
+      });
+    }
+    return self.registration.showNotification(`${d.name || 'Alguém'} está te ligando${where}`, {
+      body: 'Toque para atender na Perfumolandia', tag, renotify: true, requireInteraction: true,
+      icon: './icons/icon-192.png', badge: './icons/icon-192.png',
+      vibrate: [800, 600, 800, 600, 800, 600, 800], data: { url: './app/?call=' + d.dmId },
+    });
   })());
 });
