@@ -7,7 +7,7 @@ export const persist = (k, v) => { try { localStorage.setItem('rs.' + k, JSON.st
 
 export const DEFAULT_SETTINGS = {
   inputDevice: 'default', outputDevice: 'default', videoDevice: 'default',
-  noiseSuppression: true, echoCancellation: true, autoGain: true,
+  noiseSuppression: true, noiseMode: 'smart', echoCancellation: true, autoGain: true,
   inputMode: 'voice', pttKey: 'KeyV', pttLabel: 'V',
   camQuality: '720p',
   screenQuality: '4k60', screenPriority: 'resolution', screenAudio: true, codec: 'auto',

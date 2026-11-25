@@ -5,6 +5,7 @@ export const SUPABASE_KEY = 'sb_publishable_8JlHS8GgG-nZzHfqNfzB5Q_wWj7aGQb';
 export const APP_NAME = 'Perfumolandia';
 // site público (apresentação + downloads) e arquivos das versões
 export const SITE_URL = 'https://yakult7.github.io/perfumolandia/';
+export const inviteLink = (code) => `${SITE_URL}#/convite/${code}`;
 export const DOWNLOAD_BASE = 'https://github.com/yakult7/perfumolandia/releases/latest/download/';
 // usuários entram com "usuario" + senha; por baixo vira um e-mail interno
 export const EMAIL_DOMAIN = 'perfumolandia.app';

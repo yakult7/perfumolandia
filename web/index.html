@@ -18,7 +18,8 @@
     (function () {
       var standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
       if (standalone || window.perfumolandiaDesktop || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) {
-        location.replace('./app/index.html' + location.search); // Capacitor devolve o index raiz para caminhos sem extensão
+        var inv = /^#\/convite\/([A-Za-z0-9]{4,12})$/.exec(location.hash); // link de convite aberto no app instalado
+        location.replace('./app/index.html' + (inv ? '?convite=' + inv[1] : location.search)); // Capacitor devolve o index raiz para caminhos sem extensão
       }
     })();
   </script>

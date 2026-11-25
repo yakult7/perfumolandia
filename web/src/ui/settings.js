@@ -109,11 +109,13 @@ function Voice() {
 
   useEffect(() => {
     if (!testing) return;
-    let stream, raf, ctx;
+    let stream, raf, ctx, audioEl;
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: st.inputDevice !== 'default' ? { exact: st.inputDevice } : undefined, noiseSuppression: st.noiseSuppression, echoCancellation: st.echoCancellation, autoGainControl: st.autoGain } });
+        // mesmo microfone da chamada (com a supressão escolhida); "ouvir" toca de volta para você conferir
+        stream = await rtc.getMic();
         ctx = new AudioContext();
+        if (testing === 'listen') { audioEl = new Audio(); audioEl.srcObject = stream; audioEl.play().catch(() => {}); }
         const an = ctx.createAnalyser();
         an.fftSize = 512;
         ctx.createMediaStreamSource(stream).connect(an);
@@ -127,8 +129,8 @@ function Voice() {
         loop();
       } catch { toast('Não deu para acessar o microfone.', 'err'); setTesting(false); }
     })();
-    return () => { cancelAnimationFrame(raf); stream?.getTracks().forEach((t) => t.stop()); ctx?.close(); };
-  }, [testing, st.inputDevice, st.noiseSuppression, st.echoCancellation, st.autoGain]);
+    return () => { cancelAnimationFrame(raf); if (audioEl) audioEl.srcObject = null; stream?.getTracks().forEach((t) => t.stop()); stream?.cleanup?.(); ctx?.close(); };
+  }, [testing, st.inputDevice, st.noiseMode, st.echoCancellation, st.autoGain]);
 
   useEffect(() => {
     if (!binding) return;
@@ -151,7 +153,8 @@ function Voice() {
       ${dev.audiooutput.length ? html`<${DevSelect} label="Saída de áudio" list=${dev.audiooutput} value=${st.outputDevice} onChange=${(v) => { setSettings({ outputDevice: v }); rtc.applyVolumes(); }} />` : null}
     </div>
     <div class="field"><span class="field-label">Teste de microfone</span>
-      <div class="row center"><button class="gbtn sm" onClick=${() => setTesting(!testing)}>${testing ? 'Parar' : 'Testar'}</button>
+      <div class="row center"><button class="gbtn sm" onClick=${() => setTesting(testing ? false : 'meter')}>${testing === 'meter' ? 'Parar' : 'Testar'}</button>
+        <button class=${cx('gbtn sm', testing === 'listen' && 'on')} title="Toca sua voz de volta (use fone)" onClick=${() => setTesting(testing === 'listen' ? false : 'listen')}>${testing === 'listen' ? 'Parar' : 'Ouvir minha voz'}</button>
         <div class="meter" ref=${meter}><i></i></div></div>
     </div>
     <div class="field"><span class="field-label">Modo de entrada</span>
@@ -162,7 +165,14 @@ function Voice() {
       ${st.inputMode === 'ptt' ? html`<div class="row center">Tecla: <button class="kbd big" onClick=${() => setBinding(true)}>${binding ? 'Aperte uma tecla…' : st.pttLabel}</button>
         <small class="muted">${window.perfumolandiaDesktop ? 'Funciona mesmo com o jogo em foco.' : 'No navegador, só com o app em foco.'}</small></div>` : null}
     </div>
-    <${Toggle} label="Supressão de ruído" hint="Tira barulho de teclado, ventilador e fundo." value=${st.noiseSuppression} onChange=${(v) => setAndReload({ noiseSuppression: v })} />
+    <div class="field"><span class="field-label">Supressão de ruído</span>
+      <div class="chips">
+        <button class=${cx('chip', (st.noiseMode || 'smart') === 'smart' && 'on')} onClick=${() => setAndReload({ noiseMode: 'smart' })}>Inteligente (IA)</button>
+        <button class=${cx('chip', st.noiseMode === 'basic' && 'on')} onClick=${() => setAndReload({ noiseMode: 'basic' })}>Básica</button>
+        <button class=${cx('chip', st.noiseMode === 'off' && 'on')} onClick=${() => setAndReload({ noiseMode: 'off' })}>Desligada</button>
+      </div>
+      <small class="muted">Inteligente: uma rede neural separa sua voz de teclado, ventilador, ar-condicionado e barulho da casa.</small>
+    </div>
     <${Toggle} label="Cancelamento de eco" value=${st.echoCancellation} onChange=${(v) => setAndReload({ echoCancellation: v })} />
     <${Toggle} label="Ganho automático" value=${st.autoGain} onChange=${(v) => setAndReload({ autoGain: v })} />
     <hr />

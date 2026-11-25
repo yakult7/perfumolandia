@@ -233,7 +233,9 @@ html.perf .lg, html.perf .gbtn, html.perf .lens, html.perf .material, html.perf 
   -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
 }
 html.perf .lg, html.perf .gbtn:not(.primary):not(.ok):not(.on):not(.off):not(.danger) { background: var(--surface-raised); }
-html.perf .material, html.perf .surface { background: var(--surface-solid); }
+html.perf:not(.themed) .material, html.perf:not(.themed) .surface { background: var(--surface-solid); }
+/* com tema + modo desempenho: painéis continuam translúcidos (não têm desfoque, então não pesam) */
+html.perf.themed .lg, html.perf.themed .gbtn:not(.primary):not(.ok):not(.on):not(.off):not(.danger) { background: var(--glass-tint-strong); }
 html.perf .lg::after, html.perf .gbtn::after { background: none; }
 @media (prefers-reduced-motion: reduce) { .pop { animation-duration: 0.01s !important; } }
 
@@ -718,6 +720,8 @@ html.desktop-app .auth-top-brand { top: 44px; }
 .icon-pick img { width: 100%; height: 100%; object-fit: cover; }
 .code-box { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 18px; background: var(--fill-2); box-shadow: inset 0 0 0 0.5px var(--line); }
 .code-box b { font: 700 19px/1 var(--mono); letter-spacing: 0.12em; }
+.code-box.link b { font: 600 12px/1.35 var(--mono); letter-spacing: 0; overflow-wrap: anywhere; min-width: 0; }
+.code-box .gbtn { flex-shrink: 0; }
 .mem-list, .pick-list { display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; }
 .mem-row, .pick-row { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 12px; text-align: left; }
 .pick-row:hover { background: var(--hover); }

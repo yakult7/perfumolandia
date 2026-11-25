@@ -2,6 +2,7 @@
 // Voz e câmera vão para todos. A tela só é enviada para quem clica em "Assistir" (economiza upload em 4K).
 import { S, set, setUI } from './store.js';
 import * as api from './api.js';
+import { startSysAudio } from './sysaudio.js';
 import { sounds, audioCtx } from './sounds.js';
 import { toast, cancelOutgoing, closeCallLog } from './actions.js';
 import { TURN } from './config.js';
@@ -85,7 +86,7 @@ function mungeRemote(sdp) {
 }
 
 function encodings(kind, trackKind) {
-  if (trackKind === 'audio') return [{ maxBitrate: kind === 'screen' ? 192000 : 64000, priority: 'high', networkPriority: 'high' }];
+  if (trackKind === 'audio') return [{ maxBitrate: kind === 'screen' ? 192000 : 96000, priority: 'high', networkPriority: 'high' }];
   if (kind === 'cam') {
     const q = CAM[S.settings.camQuality] || CAM['720p'];
     return [{ maxBitrate: q.kbps * 1000, maxFramerate: q.fps }];
@@ -348,14 +349,25 @@ function tickLevels() {
 }
 
 // ---------- microfone ----------
-async function getMic() {
+/** microfone com os ajustes do usuário. Supressão "inteligente" = RNNoise (a do navegador fica desligada para não brigar) */
+export async function getMic() {
   const st = S.settings;
-  const base = { echoCancellation: st.echoCancellation, noiseSuppression: st.noiseSuppression, autoGainControl: st.autoGain, channelCount: 1 };
+  const mode = st.noiseMode || 'smart';
+  const base = { echoCancellation: st.echoCancellation, noiseSuppression: mode === 'basic', autoGainControl: st.autoGain, channelCount: 1, sampleRate: 48000 };
+  let raw;
   try {
-    return await navigator.mediaDevices.getUserMedia({ audio: { ...base, ...(st.inputDevice !== 'default' ? { deviceId: { exact: st.inputDevice } } : {}) } });
+    raw = await navigator.mediaDevices.getUserMedia({ audio: { ...base, ...(st.inputDevice !== 'default' ? { deviceId: { exact: st.inputDevice } } : {}) } });
   } catch (e) {
-    if (st.inputDevice !== 'default' && e.name === 'OverconstrainedError') return navigator.mediaDevices.getUserMedia({ audio: base });
-    throw e;
+    if (st.inputDevice !== 'default' && e.name === 'OverconstrainedError') raw = await navigator.mediaDevices.getUserMedia({ audio: base });
+    else throw e;
+  }
+  if (mode !== 'smart') return raw;
+  try {
+    const { denoise } = await import('./noise.js');
+    return await denoise(raw);
+  } catch (e) {
+    console.warn('RNNoise indisponível, usando o microfone direto', e);
+    return raw;
   }
 }
 function micShouldBeOn() {
@@ -435,7 +447,7 @@ export async function leave(silent = false) {
   for (const p of peers.values()) p.close();
   peers.clear();
   early.clear();
-  stopLocal('mic'); stopLocal('cam'); stopLocal('screen');
+  stopLocal('mic'); stopLocal('cam'); local.sysAudio?.stop(); local.sysAudio = null; stopLocal('screen');
   for (const k of [...levels.keys()]) unwatchLevel(k);
   clearInterval(levelTimer); levelTimer = null;
   set((s) => { s.call = null; s.speaking = {}; s.ui = { ...s.ui, theater: null, callExpanded: false, callCollapsed: false }; });
@@ -449,6 +461,7 @@ function stopLocal(kind) {
   const s = local[kind];
   if (!s) return;
   s.getTracks().forEach((t) => t.stop());
+  s.cleanup?.();
   unwatchLevel(s.id);
   local[kind] = null;
 }
@@ -561,13 +574,15 @@ export async function startScreen(opts) {
   if (!S.call) return;
   const q = QUALITY[opts.quality] || QUALITY['4k60'];
   if (local.screen) stopScreen(true);
-  if (opts.sourceId && window.perfumolandiaDesktop?.selectSource) await window.perfumolandiaDesktop.selectSource(opts.sourceId, opts.audio);
+  // no app do Windows o som vem do audiocap.exe (sem as vozes da chamada); o Electron captura só o vídeo
+  const nativeAudio = !!(opts.audio && window.perfumolandiaDesktop?.startSysAudio);
+  if (opts.sourceId && window.perfumolandiaDesktop?.selectSource) await window.perfumolandiaDesktop.selectSource(opts.sourceId, opts.audio && !nativeAudio);
   let stream;
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({
       video: { width: { max: q.w }, height: { max: q.h }, frameRate: { ideal: q.fps, max: q.fps } },
       // restrictOwnAudio: não captura as vozes da própria chamada (evita eco para quem assiste)
-      audio: opts.audio ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true, suppressLocalAudioPlayback: false } : false,
+      audio: opts.audio && !nativeAudio ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false, restrictOwnAudio: true, suppressLocalAudioPlayback: false } : false,
       systemAudio: opts.audio ? 'include' : 'exclude',
       selfBrowserSurface: 'exclude',
       surfaceSwitching: 'include',
@@ -575,6 +590,10 @@ export async function startScreen(opts) {
   } catch (e) {
     if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast('Não foi possível capturar a tela: ' + e.message, 'err');
     return;
+  }
+  if (nativeAudio) {
+    const sa = await startSysAudio(opts.sourceId);
+    if (sa) { stream.addTrack(sa.track); local.sysAudio = sa; } else toast('Não deu para capturar o som do PC; a tela vai sem som.');
   }
   const v = stream.getVideoTracks()[0];
   v.contentHint = opts.priority === 'fps' ? 'motion' : 'detail';
@@ -594,6 +613,8 @@ export async function startScreen(opts) {
 export function stopScreen(silent) {
   if (!local.screen) return;
   for (const p of peers.values()) p.unsend('screen');
+  local.sysAudio?.stop();
+  local.sysAudio = null;
   stopLocal('screen');
   local.screenOpts = null;
   patchCall({ screenLabel: null, focus: S.call?.focus?.sid === api.clientId ? null : S.call?.focus });
@@ -615,10 +636,11 @@ export async function reloadMic() {
   try {
     const m = await getMic();
     const track = m.getAudioTracks()[0];
-    const old = local.mic.getAudioTracks()[0];
-    unwatchLevel(local.mic.id);
-    local.mic.removeTrack(old); old.stop();
-    local.mic.addTrack(track);
+    const prev = local.mic;
+    unwatchLevel(prev.id);
+    prev.getTracks().forEach((t) => t.stop());
+    prev.cleanup?.();
+    local.mic = m;
     for (const p of peers.values()) p.replace('mic', track);
     applyMic();
   } catch { toast('Não deu para trocar o microfone.', 'err'); }

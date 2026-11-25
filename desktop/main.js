@@ -4,6 +4,7 @@ const { app, BrowserWindow, session, desktopCapturer, ipcMain, protocol, net, Tr
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const fs = require('node:fs');
+const { spawn } = require('node:child_process');
 const { checkBeforeStart, backgroundChecks } = require('./updater.js');
 const { watchGames } = require('./games.js');
 
@@ -86,7 +87,22 @@ function createTray() {
   tray.on('click', () => { win.isVisible() && win.isFocused() ? win.hide() : (win.show(), win.focus()); });
 }
 
-app.on('second-instance', () => { if (win) { win.show(); if (win.isMinimized()) win.restore(); win.focus(); } });
+// links perfumolandia://convite/CODIGO (botão "Abrir no app do PC" da página de convite)
+let pendingInvite = null;
+const inviteFrom = (argv) => { const a = (argv || []).find((x) => /^perfumolandia:\/\//i.test(x)); return a ? /convite\/([A-Za-z0-9]{4,12})/i.exec(a)?.[1] || null : null; };
+function deliverInvite(code) {
+  if (!code) return;
+  if (win && !win.webContents.isLoading()) win.webContents.send('invite', code);
+  else pendingInvite = code;
+}
+pendingInvite = inviteFrom(process.argv);
+if (app.isPackaged && !PROFILE) app.setAsDefaultProtocolClient('perfumolandia');
+ipcMain.handle('invite:get', () => { const c = pendingInvite; pendingInvite = null; return c; });
+
+app.on('second-instance', (e, argv) => {
+  if (win) { win.show(); if (win.isMinimized()) win.restore(); win.focus(); }
+  deliverInvite(inviteFrom(argv));
+});
 app.on('before-quit', () => { quitting = true; });
 
 app.whenReady().then(() => {
@@ -107,10 +123,11 @@ app.whenReady().then(() => {
 
   // compartilhamento de tela: o app mostra o seletor bonito e avisa qual fonte usar
   ses.setDisplayMediaRequestHandler(async (req, cb) => {
+    // com o som nativo (audiocap.exe) o app pede só o vídeo aqui
     try {
       const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
       const src = sources.find((s) => s.id === pendingSource?.id) || sources.find((s) => s.id.startsWith('screen')) || sources[0];
-      const wantAudio = pendingSource ? pendingSource.audio : true;
+      const wantAudio = req.audioRequested !== false && (pendingSource ? pendingSource.audio : true);
       cb({ video: src, ...(wantAudio && process.platform === 'win32' ? { audio: 'loopback' } : {}) });
     } catch {
       cb({});
@@ -169,6 +186,44 @@ ipcMain.handle('autostart:set', (e, on) => {
   return !!on;
 });
 ipcMain.handle('app:version', () => app.getVersion());
+
+// ---------- som do PC na transmissão SEM as vozes da chamada ----------
+// audiocap.exe usa o loopback por processo do Windows: na tela inteira pega tudo menos o Perfumolandia;
+// numa janela pega só o som do programa dela (como o Discord).
+let sysCap = null;
+function stopSysAudio() {
+  if (!sysCap) return;
+  try { sysCap.stdin.end(); } catch {}
+  const p = sysCap; sysCap = null;
+  setTimeout(() => { try { p.kill(); } catch {} }, 1500);
+}
+ipcMain.handle('sysaudio:start', (e, sourceId) => {
+  stopSysAudio();
+  if (process.platform !== 'win32') return false;
+  const exe = app.isPackaged ? path.join(process.resourcesPath, 'audiocap.exe') : path.join(__dirname, 'audiocap.exe');
+  if (!fs.existsSync(exe)) return false;
+  const hwnd = /^window:(\d+):/.exec(sourceId || '')?.[1];
+  const args = hwnd ? ['w' + hwnd, 'include'] : [String(process.pid)];
+  return new Promise((resolve) => {
+    const p = spawn(exe, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    sysCap = p;
+    let rest = null, started = false;
+    p.stdout.on('data', (chunk) => {
+      if (!started) { started = true; resolve(true); }
+      // manda só quadros inteiros (4 bytes: 2 canais × 16 bits)
+      if (rest) { chunk = Buffer.concat([rest, chunk]); rest = null; }
+      const cut = chunk.length - (chunk.length % 4);
+      if (cut < chunk.length) rest = chunk.subarray(cut);
+      if (cut && sysCap === p) e.sender.send('sysaudio', chunk.subarray(0, cut));
+    });
+    p.stderr.on('data', (d) => console.warn('audiocap:', String(d).trim()));
+    p.on('error', () => resolve(false));
+    p.on('exit', () => { if (!started) resolve(false); if (sysCap === p) sysCap = null; });
+    setTimeout(() => { if (!started) { resolve(false); stopSysAudio(); } }, 4000);
+  });
+});
+ipcMain.handle('sysaudio:stop', () => stopSysAudio());
+app.on('will-quit', stopSysAudio);
 ipcMain.handle('game:get', () => currentGame);
 
 app.on('window-all-closed', () => {});

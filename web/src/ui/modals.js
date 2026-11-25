@@ -2,6 +2,7 @@ import { html, useState, useEffect, cx, isIOS, isStandalone } from '../lib.js';
 import { useS, S, persist } from '../store.js';
 import { Icon } from '../icons.js';
 import * as api from '../api.js';
+import { inviteLink } from '../config.js';
 import { closeModal, run, safe, go, toast, openDM, acceptCall, declineCall, callDM, statusOf, groupName, openModal } from '../actions.js';
 import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, STATUS_LABEL, GroupAvatar } from './common.js';
 import { ProfileCard } from './profile.js';
@@ -136,7 +137,7 @@ function AddServer() {
         </button>
         <${Field} label="Nome do servidor"><input value=${name} maxlength="48" onInput=${(e) => setName(e.target.value)} /><//>
         <button class="gbtn primary wide" disabled=${busy || !name.trim()} onClick=${create}>Criar</button>` : html`
-        <${Field} label="Código ou link do convite" hint="Ex.: K7Q2XA"><input value=${code} onInput=${(e) => setCode(e.target.value)} placeholder="K7Q2XA" autocapitalize="characters" /><//>
+        <${Field} label="Código ou link do convite" hint="Cole o link que recebeu ou digite o código (ex.: K7Q2XA)"><input value=${code} onInput=${(e) => setCode(e.target.value)} placeholder="K7Q2XA ou o link do convite" /><//>
         <button class="gbtn primary wide" disabled=${busy || !code.trim()} onClick=${join}>Entrar</button>`}
     <//>`;
 }
@@ -176,11 +177,13 @@ function Invite({ id }) {
   const sv = useS((s) => s.servers[id]);
   if (!sv) return null;
   const copy = (t) => navigator.clipboard?.writeText(t).then(() => toast('Copiado!'));
-  const msg = `Entra no meu servidor "${sv.name}" na Perfumolandia! Código do servidor: ${sv.invite}`;
+  const link = inviteLink(sv.invite);
+  const msg = `Entra no meu servidor "${sv.name}" na Perfumolandia! ${link} (ou use o código ${sv.invite})`;
   return html`
     <${Modal} title=${'Convidar para ' + sv.name}>
-      <p class="muted">Mande o código para os amigos. Eles entram em <b>+ → Tenho um convite</b>.</p>
-      <div class="code-box"><b>${sv.invite}</b><button class="gbtn sm" onClick=${() => copy(sv.invite)}><${Icon} n="copy" s=${14} /> Copiar</button></div>
+      <p class="muted">Mande o link: quem abrir entra direto (pelo app ou pelo navegador). Ou mande o código, que eles colocam em <b>+ → Tenho um convite</b>.</p>
+      <${Field} label="Link do convite"><div class="code-box link"><b>${link}</b><button class="gbtn sm primary" onClick=${() => copy(link)}><${Icon} n="copy" s=${14} /> Copiar link</button></div><//>
+      <${Field} label="Código"><div class="code-box"><b>${sv.invite}</b><button class="gbtn sm" onClick=${() => copy(sv.invite)}><${Icon} n="copy" s=${14} /> Copiar</button></div><//>
       <div class="row">
         <button class="gbtn" onClick=${() => copy(msg)}><${Icon} n="copy" s=${16} /> Copiar mensagem pronta</button>
         ${navigator.share ? html`<button class="gbtn" onClick=${() => navigator.share({ text: msg }).catch(() => {})}><${Icon} n="share" s=${16} /> Compartilhar</button>` : null}

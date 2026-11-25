@@ -1,6 +1,33 @@
 import { S, set, setUI, persist } from './store.js';
 import * as api from './api.js';
 import * as rtc from './rtc.js';
+
+// ---------- convite por link ----------
+// O link (site/#/convite/CODIGO) abre o app com ?convite=CODIGO; no PC, perfumolandia://convite/CODIGO.
+// Guarda até a pessoa estar logada e então entra no servidor.
+export function queueInvite(code) {
+  if (!code) return;
+  try { localStorage.setItem('rs.pendingInvite', String(code)); } catch {}
+  tryPendingInvite();
+}
+let inviting = false;
+export async function tryPendingInvite() {
+  if (inviting || !S.ready || !S.authed) return;
+  let code = null;
+  try { code = localStorage.getItem('rs.pendingInvite'); localStorage.removeItem('rs.pendingInvite'); } catch {}
+  if (!code) return;
+  code = api.parseInvite(code);
+  const already = Object.values(S.servers).find((s) => s.invite === code);
+  if (already) { go(already.id); toast(`Você já está em ${already.name}.`); return; }
+  inviting = true;
+  try {
+    const id = await api.joinServer(code);
+    go(id);
+    toast(`Você entrou em ${S.servers[id]?.name || 'um servidor'}!`);
+  } catch {
+    toast('Esse convite não vale mais. Peça um novo para quem te chamou.', 'err');
+  } finally { inviting = false; }
+}
 import { sounds } from './sounds.js';
 
 let toastId = 0;

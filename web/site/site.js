@@ -264,12 +264,33 @@ function android() {
   </section>`;
 }
 
+// convite de servidor: perfumolandia.../#/convite/K7Q2XA
+function invite(code) {
+  const web = `${APP}index.html?convite=${code}`;
+  const isWin = /Windows/.test(navigator.userAgent);
+  return `
+  <section class="page">
+    ${sky()}
+    <div class="page-in narrow">
+      <div class="big-ic"><img src="${logo}" alt="" style="width:72px;height:72px;object-fit:contain"></div>
+      <h1>Você foi convidado!</h1>
+      <p class="lead">Um amigo te chamou para o servidor dele na Perfumolandia.<br>Código do convite: <b>${code}</b></p>
+      <div class="row-btns">
+        ${isWin ? `<a class="btn white lgb" href="perfumolandia://convite/${code}"><span class="ic">${I.windows}</span>Abrir no app do PC</a>` : ''}
+        <a class="btn ${isWin ? 'glass' : 'white'} lgb" href="${web}">Entrar pelo navegador</a>
+      </div>
+      <p class="lead small">Ainda não tem o app? <a href="#/baixar">Baixe aqui</a>. Dentro do app, também dá para entrar em <b>+ → Tenho um convite</b> com o código <b>${code}</b>.</p>
+    </div>
+  </section>`;
+}
+
 // ---------- roteador ----------
 const root = document.getElementById('site');
 function render() {
   const h = location.hash.replace(/^#/, '') || '/';
   const [path, anchor] = h.split('#');
-  const page = { '/': home, '/baixar': downloads, '/baixar/pc': pc, '/baixar/ios': ios, '/baixar/android': android }[path] || home;
+  const inv = /^\/convite\/([A-Za-z0-9]{4,12})$/.exec(path);
+  const page = inv ? () => invite(inv[1].toUpperCase()) : { '/': home, '/baixar': downloads, '/baixar/pc': pc, '/baixar/ios': ios, '/baixar/android': android }[path] || home;
   root.innerHTML = nav() + page();
   document.documentElement.dataset.page = path === '/' ? 'home' : 'page';
   if (anchor) document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth' });

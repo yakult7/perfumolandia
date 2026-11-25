@@ -1,6 +1,6 @@
 import './app.css';
 import { html, render } from './lib.js';
-import { useS, S } from './store.js';
+import { useS, S, subscribe } from './store.js';
 import * as api from './api.js';
 import { Auth } from './ui/auth.js';
 import { Shell } from './ui/shell.js';
@@ -27,6 +27,14 @@ if (window.perfumolandiaDesktop) {
   window.perfumolandiaDesktop.getGame?.().then((g) => g && api.setMyGame(g));
 }
 render(html`<${App} />`, document.getElementById('app'));
+// convite por link: ?convite=CODIGO (navegador/celular) ou perfumolandia://convite/CODIGO (app do PC)
+import('./actions.js').then(({ queueInvite, tryPendingInvite }) => {
+  const inv = new URLSearchParams(location.search).get('convite');
+  if (inv) { history.replaceState(null, '', location.pathname); queueInvite(inv); }
+  window.perfumolandiaDesktop?.onInvite?.((c) => queueInvite(c));
+  window.perfumolandiaDesktop?.getInvite?.().then((c) => c && queueInvite(c));
+  subscribe(tryPendingInvite);
+});
 // acesso para diagnóstico pelo console (F12)
 Promise.all([import('./rtc.js'), import('./actions.js'), import('./store.js'), import('./media.js')]).then(([rtc, actions, store, media]) => { window.__p = { api, rtc, S, actions, store, media }; });
 api.start().catch((e) => {

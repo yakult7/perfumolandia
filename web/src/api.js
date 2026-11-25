@@ -564,8 +564,14 @@ export async function createServer(name, icon) {
   await refreshServer(s.id);
   return s.id;
 }
+/** aceita o código (K7Q2XA) ou o link inteiro do convite */
+export const parseInvite = (text) => {
+  const t = String(text || '').trim();
+  const m = /convite[/=]([A-Za-z0-9]{4,12})/i.exec(t);
+  return (m ? m[1] : t).toUpperCase();
+};
 export async function joinServer(code) {
-  const id = must(await sb.rpc('join_server', { code }));
+  const id = must(await sb.rpc('join_server', { code: parseInvite(code) }));
   await refreshServer(id);
   return id;
 }

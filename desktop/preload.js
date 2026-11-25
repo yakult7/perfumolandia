@@ -4,6 +4,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 let pttCb = null;
 ipcRenderer.on('ptt', (e, down) => pttCb?.(down));
 let gameCb = null;
+let sysCb = null;
+let inviteCb = null;
+ipcRenderer.on('invite', (e, code) => inviteCb?.(code));
+ipcRenderer.on('sysaudio', (e, buf) => sysCb?.(buf));
 ipcRenderer.on('game', (e, g) => gameCb?.(g));
 
 contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
@@ -18,5 +22,9 @@ contextBridge.exposeInMainWorld('perfumolandiaDesktop', {
   version: () => ipcRenderer.invoke('app:version'),
   onPtt: (cb) => { pttCb = cb; },
   getGame: () => ipcRenderer.invoke('game:get'),
+  getInvite: () => ipcRenderer.invoke('invite:get'),
+  onInvite: (cb) => { inviteCb = cb; },
+  startSysAudio: (sourceId, cb) => { sysCb = cb; return ipcRenderer.invoke('sysaudio:start', String(sourceId || '')); },
+  stopSysAudio: () => { sysCb = null; return ipcRenderer.invoke('sysaudio:stop'); },
   onGame: (cb) => { gameCb = cb; },
 });
