@@ -316,7 +316,10 @@ let myVoice = { room: null, state: null };
 let tracking = null, trackAgain = false;
 async function trackPresence() {
   if (tracking) { trackAgain = true; return tracking; }
-  tracking = (async () => {
+  const job = (async () => {
+    // espera um ciclo: sem isso, se o canal ainda não conectou, a função terminava "na hora",
+    // o finally rodava ANTES da atribuição abaixo e a trava ficava presa para sempre (app offline para os outros)
+    await null;
     try {
     do {
       trackAgain = false;
@@ -330,10 +333,11 @@ async function trackPresence() {
     } catch (e) {
       console.warn('presença: falha ao anunciar', e);
     } finally {
-      tracking = null; // nunca fica travado (antes, um erro deixava o app "sumido" para sempre)
+      if (tracking === job) tracking = null;
     }
   })();
-  return tracking;
+  tracking = job;
+  return job;
 }
 export function setVoicePresence(room, state) {
   myVoice = { room, state };
