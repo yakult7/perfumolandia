@@ -598,3 +598,7 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.save_push_sub(text, text, jsonb) from public;
 grant execute on function public.save_push_sub(text, text, jsonb) to authenticated;
+
+-- configurações do push que só o servidor lê (chaves do Web Push, criadas pela função call-push)
+create table if not exists public.push_config (key text primary key, value jsonb not null);
+alter table public.push_config enable row level security;

@@ -6,7 +6,6 @@ import { S, set } from './store.js';
 import { isStandalone } from './lib.js';
 import { isNativeApp, nativePlatform } from './native.js';
 
-export const VAPID_PUBLIC_KEY = 'BAzkQksEO2noUm34DYM7Rzeo6xCZx9iJDdQeqHVkVI78mS8RaMgTlL7HmFupTL1cQ8gf0zdUmhD8zyU618ro72s';
 const native = isNativeApp && nativePlatform === 'android' ? window.Capacitor?.Plugins?.CallPush : null;
 const isMobile = /Android|iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 /** onde dá para receber ligação com o app fechado */
@@ -36,7 +35,12 @@ export async function enablePush({ ask = true } = {}) {
   }
   const reg = await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
-  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(VAPID_PUBLIC_KEY) });
+  if (!sub) {
+    // chave pública do servidor (criada por ele mesmo)
+    const { data, error } = await sb.functions.invoke('call-push', { body: { action: 'key' } });
+    if (error || !data?.publicKey) throw new Error('servidor de avisos indisponível');
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(data.publicKey) });
+  }
   const j = sub.toJSON();
   await save('web', j.endpoint, j.keys);
   set((s) => { s.ui = { ...s.ui, pushOk: true }; });

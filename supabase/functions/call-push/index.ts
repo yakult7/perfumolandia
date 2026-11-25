@@ -1,7 +1,8 @@
 // Função "call-push" (Supabase Edge Function): faz o celular tocar quando alguém liga, mesmo com o app fechado.
 //   POST { dmId, action: 'ring' | 'cancel' }   (com o login de quem está ligando)
 // Manda para todos os aparelhos dos outros membros da conversa:
-//   - Web Push (iPhone/Android com o app na tela inicial)  -> segredos VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY
+//   - Web Push (iPhone/Android com o app na tela inicial)  -> chaves VAPID criadas pela própria função (tabela push_config)
+//     POST { action: 'key' } devolve a chave pública para o app se inscrever
 //   - Firebase (app Android)                               -> segredo FCM_SERVICE_ACCOUNT (JSON da conta de serviço)
 import { createClient } from 'npm:@supabase/supabase-js@2.49.4';
 import webpush from 'npm:web-push@3.6.7';
@@ -18,10 +19,23 @@ const URL_ = Deno.env.get('SUPABASE_URL')!;
 // chave de serviço: a antiga (service_role) ou a nova (sb_secret_...)
 const firstKey = (name: string) => { try { const v = JSON.parse(Deno.env.get(name) || '{}'); return Object.values(v)[0] as string | undefined; } catch { return undefined; } };
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || firstKey('SUPABASE_SECRET_KEYS') || '';
-const VAPID_PUB = Deno.env.get('VAPID_PUBLIC_KEY');
-const VAPID_PRIV = Deno.env.get('VAPID_PRIVATE_KEY');
 const FCM_SA = Deno.env.get('FCM_SERVICE_ACCOUNT');
-if (VAPID_PUB && VAPID_PRIV) webpush.setVapidDetails('https://yakult7.github.io/perfumolandia/', VAPID_PUB, VAPID_PRIV);
+
+// chaves do Web Push: criadas uma vez pela própria função e guardadas no banco (só o servidor lê)
+let vapid: { publicKey: string; privateKey: string } | null = null;
+async function getVapid(db: ReturnType<typeof createClient>) {
+  if (vapid) return vapid;
+  const { data } = await db.from('push_config').select('value').eq('key', 'vapid').maybeSingle();
+  if (data?.value?.publicKey) vapid = data.value;
+  else {
+    const k = webpush.generateVAPIDKeys();
+    await db.from('push_config').insert({ key: 'vapid', value: k });
+    const { data: again } = await db.from('push_config').select('value').eq('key', 'vapid').maybeSingle(); // outra chamada pode ter criado antes
+    vapid = again?.value || k;
+  }
+  webpush.setVapidDetails('https://yakult7.github.io/perfumolandia/', vapid!.publicKey, vapid!.privateKey);
+  return vapid!;
+}
 
 // token de acesso do Firebase (vale 1 hora)
 let fcmToken: { value: string; exp: number } | null = null;
@@ -51,6 +65,7 @@ Deno.serve(async (req) => {
   const { data: { user: me } } = await db.auth.getUser(jwt);
   if (!me) return json({ error: 'login' }, 401);
   const { dmId, action } = await req.json().catch(() => ({}));
+  if (action === 'key') return json({ publicKey: (await getVapid(db)).publicKey });
   if (typeof dmId !== 'string' || !['ring', 'cancel'].includes(action)) return json({ error: 'dados' }, 400);
 
   // quem está na conversa (só manda se quem liga é membro)
@@ -81,7 +96,7 @@ Deno.serve(async (req) => {
   await Promise.all((subs || []).map(async (s) => {
     try {
       if (s.kind === 'web') {
-        if (!VAPID_PUB || !VAPID_PRIV) return;
+        await getVapid(db);
         await webpush.sendNotification({ endpoint: s.token, keys: s.keys }, JSON.stringify(payload), { TTL: 45, urgency: 'high', topic: 'call' });
         sent++;
       } else {
