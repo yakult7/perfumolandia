@@ -1,4 +1,4 @@
-import { html, useMedia, cx, useEffect } from '../lib.js';
+import { html, useMedia, cx, useEffect, useState } from '../lib.js';
 import { useS, S, setUI, set } from '../store.js';
 import { Icon } from '../icons.js';
 import { GlassBar, GlassMenu } from '../glass.js';
@@ -322,12 +322,23 @@ function MobileServers() {
     </div>`;
 }
 
-/** versão nova baixada com o app aberto: botão para reiniciar (ou instala sozinha ao fechar) */
+/** versão nova baixada com o app aberto: seta verde ao lado de minimizar/maximizar/fechar (só aparece quando tem atualização).
+ *  Clicou: fecha, instala e abre de novo sozinho, já atualizado. */
 function UpdatePill() {
   const v = useS((s) => s.ui.updateReady);
   const inCall = useS((s) => !!s.call);
+  const [right, setRight] = useState(140);
+  useEffect(() => {
+    // largura dos botões do Windows (minimizar, maximizar, fechar) para encostar ao lado deles
+    const wco = navigator.windowControlsOverlay;
+    const calc = () => { const r = wco?.getTitlebarAreaRect?.(); if (r?.width) setRight(Math.max(0, innerWidth - (r.x + r.width))); };
+    calc();
+    wco?.addEventListener?.('geometrychange', calc);
+    addEventListener('resize', calc);
+    return () => { wco?.removeEventListener?.('geometrychange', calc); removeEventListener('resize', calc); };
+  }, []);
   if (!v) return null;
-  return html`<button class="update-pill lg" title=${inCall ? 'Saia da chamada antes, ou ela instala sozinha quando você fechar o app' : 'Reinicia em 2 segundos já atualizado'}
-    onClick=${() => { if (!inCall || confirm('Reiniciar agora vai te tirar da chamada. Continuar?')) window.perfumolandiaDesktop?.installUpdate?.(); }}>
-    <${Icon} n="download" s=${14} /> Versão ${v} pronta · Reiniciar</button>`;
+  const go = () => { if (!inCall || confirm('Atualizar agora reinicia o app e te tira da chamada. Continuar?')) window.perfumolandiaDesktop?.installUpdate?.(); };
+  return html`<button class="title-update" style=${`right:${right}px`} title=${`Versão ${v} pronta — clique para atualizar agora (reinicia em segundos)`} onClick=${go}>
+    <${Icon} n="download" s=${16} /></button>`;
 }

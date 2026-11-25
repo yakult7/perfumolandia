@@ -351,3 +351,10 @@ html.nogpu .lg, html.nogpu .gbtn:not(.primary):not(.ok):not(.on):not(.off):not(.
 .img-cell img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.25s; }
 .img-cell:hover img { transform: scale(1.03); }
 .img-more { position: absolute; inset: 0; display: grid; place-items: center; font-size: 26px; font-weight: 800; color: #fff; background: rgba(0, 0, 0, 0.55); }
+
+/* seta verde de atualização ao lado dos botões da janela (só quando tem versão nova) */
+.title-update { position: fixed; top: 0; z-index: 210; width: 46px; height: 34px; display: grid; place-items: center; color: #3ad16a; -webkit-app-region: no-drag; transition: background 0.15s; animation: title-update-in 0.3s ease-out; }
+.title-update:hover { background: rgba(255, 255, 255, 0.1); }
+[data-theme="light"] .title-update:hover { background: rgba(0, 0, 0, 0.06); }
+.title-update .ic { filter: drop-shadow(0 0 4px rgba(58, 209, 106, 0.45)); }
+@keyframes title-update-in { from { opacity: 0; } }
