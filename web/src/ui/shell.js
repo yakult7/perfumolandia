@@ -13,7 +13,7 @@ import { CallStage, MiniCall, Theater } from './call.js';
 import { Friends, DMList } from './home.js';
 import { Modals, IncomingCall, InstallBanner } from './modals.js';
 import { RemoteLayer } from './remote.js';
-import { ProfilePopover, UserCard } from './popover.js';
+import { ProfilePopover, ProfilePanel } from './popover.js';
 import { ShopPage } from './shop.js';
 import { userMenu } from './usermenu.js';
 import { plateOf } from '../nameplates.js';
@@ -61,7 +61,7 @@ function DesktopShell() {
       </main>
       ${!stage && showMembers && isServerText ? html`<${Members} ids=${S.servers[view.serverId]?.members || []} ownerId=${S.servers[view.serverId]?.ownerId} />` : null}
       ${!stage && showMembers && groupId ? html`<${Members} ids=${S.groups[groupId].members} ownerId=${S.groups[groupId].ownerId} />` : null}
-      ${!stage && dmOther && dmProfile ? html`<aside class="dm-profile panel material"><div class="side-scroll"><${UserCard} uid=${dmOther} panel /></div></aside>` : null}
+      ${!stage && dmOther && dmProfile ? html`<aside class="dm-profile"><${ProfilePanel} uid=${dmOther} /></aside>` : null}
     </div>`;
 }
 

@@ -178,9 +178,16 @@ function subscribeRealtime(uid) {
     if (dead(globalChan)) { set((s) => { s.connected = false; }); makeGlobal(); }
     if (dead(dbChan)) makeDb(uid);
     if (roomInfo && dead(roomChan)) joinRoomChannel(roomInfo.id, roomInfo.handlers).catch(() => {});
+    // se eu não estou no canal de presença (envio falhou, servidor reiniciou...), me anuncio de novo
+    if (globalChan?.state === 'joined' && !tracking) {
+      const mine = globalChan.presenceState()?.[clientId];
+      if (!mine?.length) { if (++missingTicks >= 2) { missingTicks = 0; console.warn('presença: não estou no canal, anunciando de novo'); trackPresence(); } }
+      else missingTicks = 0;
+    }
   }, 2500);
 }
 let watchTimer = 0;
+let missingTicks = 0;
 let roomInfo = null;
 
 function makeDb(uid) {
@@ -310,6 +317,7 @@ let tracking = null, trackAgain = false;
 async function trackPresence() {
   if (tracking) { trackAgain = true; return tracking; }
   tracking = (async () => {
+    try {
     do {
       trackAgain = false;
       const ch = globalChan;
@@ -319,7 +327,11 @@ async function trackPresence() {
         new Promise((r) => setTimeout(r, 6000)),
       ]);
     } while (trackAgain);
-    tracking = null;
+    } catch (e) {
+      console.warn('presença: falha ao anunciar', e);
+    } finally {
+      tracking = null; // nunca fica travado (antes, um erro deixava o app "sumido" para sempre)
+    }
   })();
   return tracking;
 }

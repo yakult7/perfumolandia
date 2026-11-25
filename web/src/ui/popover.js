@@ -5,6 +5,11 @@ import { useS, S, setUI } from '../store.js';
 import { Icon } from '../icons.js';
 import { openDM, callDM, openModal, statusOf, sendMessage, go } from '../actions.js';
 import { ProfileCard } from './profile.js';
+import { Avatar, GameCard, STATUS_LABEL } from './common.js';
+import { ProfileEffect } from './shop.js';
+import { frameHtml, hasFrame } from '../framesart.js';
+import { plateOf } from '../nameplates.js';
+import { md } from '../markdown.js';
 import { userMenu } from './usermenu.js';
 import { requestControl } from '../remote.js';
 
@@ -90,5 +95,44 @@ export function UserCard({ uid, compact, panel }) {
           <button class="gbtn sm icon-only" disabled=${!msg.trim()} title="Enviar"><${Icon} n="send" s=${14} /></button>
         </form>` : null}
       ${compact ? html`<button class="ucard-full" onClick=${() => { closeProfile(); openModal('profile', { id: uid }); }}>Ver perfil completo</button>` : null}
+    </div>`;
+}
+
+/** painel de perfil na lateral da conversa (como no Discord): o painel inteiro é o perfil */
+export function ProfilePanel({ uid }) {
+  const u = useS((s) => s.users[uid]);
+  const st = useS((s) => statusOf(s, uid));
+  const note = useS((s) => s.settings.notes?.[uid] || '');
+  const nick = useS((s) => s.settings.nicknames?.[uid] || '');
+  if (!u) return null;
+  const c1 = u.color || '#5e5ce6', c2 = u.accent || c1;
+  const frame = hasFrame(u.frame) ? u.frame : null;
+  const mutual = Object.values(S.servers).filter((sv) => sv.members?.includes(uid));
+  const groups = Object.values(S.groups).filter((g) => g.members.includes(uid) && g.members.includes(S.uid));
+  const since = u.createdAt ? new Date(u.createdAt).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const mutualText = [mutual.length ? `${mutual.length} ${mutual.length === 1 ? 'servidor' : 'servidores'} em comum` : '', groups.length ? `${groups.length} ${groups.length === 1 ? 'grupo' : 'grupos'} em comum` : ''].filter(Boolean).join(' • ');
+  return html`
+    <div class=${cx('pp', frame && 'framed')} style=${`--pc1:${c1};--pc2:${c2}`}>
+      <${ProfileEffect} effect=${u.effect} />
+      <div class="pp-banner">${u.banner ? html`<img src=${u.banner} alt="" />` : null}</div>
+      <div class="pp-tools">
+        <button class="pp-tool" title="Mais" onClick=${(e) => userMenu(e, uid, { anchor: true })}><${Icon} n="more" s=${16} /></button>
+      </div>
+      <div class="pp-av"><${Avatar} id=${uid} size=${88} status /></div>
+      <div class="pp-scroll">
+        <div class="pp-names">
+          <b class=${cx('pp-name', plateOf(u) && 'np-name ' + plateOf(u))}>${nick || u.displayName}</b>
+          <span class="pp-user">${u.username}${u.pronouns ? ` · ${u.pronouns}` : ''}${nick ? ` · ${u.displayName}` : ''}</span>
+        </div>
+        ${u.customStatus ? html`<div class="pp-status">${u.customStatus}</div>` : null}
+        ${mutualText ? html`<div class="pp-mutual">${mutualText}</div>` : null}
+        ${u.bio ? html`<div class="pp-bio" dangerouslySetInnerHTML=${{ __html: md(u.bio, new Set()) }}></div>` : null}
+        <${GameCard} id=${uid} />
+        ${note ? html`<div class="pp-sec"><small>Nota</small><p class="pp-note">${note}</p></div>` : null}
+        ${since ? html`<div class="pp-sec"><small>Membro desde</small><p>${since}</p></div>` : null}
+        ${st !== 'offline' && st !== 'online' ? html`<div class="pp-sec"><small>Status</small><p><i class=${'dot inline st-' + st}></i> ${STATUS_LABEL[st]}</p></div>` : null}
+      </div>
+      <button class="pp-full" onClick=${() => openModal('profile', { id: uid })}>Ver Perfil Completo</button>
+      ${frame ? html`<div class="pp-frame" dangerouslySetInnerHTML=${{ __html: frameHtml(frame) }}></div>` : null}
     </div>`;
 }
