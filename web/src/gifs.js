@@ -1,6 +1,7 @@
 // GIFs: (1) link de GIF/imagem/vídeo sozinho na mensagem vira a mídia, sem mostrar a URL (como no Discord);
 // (2) seletor de GIFs com busca e "em alta" usando a API do KLIPY (precisa da chave em config.js).
-import { KLIPY_KEY } from './config.js';
+import { KLIPY_KEY, SUPABASE_URL } from './config.js';
+import { sb } from './api.js';
 import { S } from './store.js';
 
 const MEDIA_EXT = /\.(gif|webp|png|jpe?g|avif|mp4|webm)(\?[^\s]*)?$/i;
@@ -41,11 +42,40 @@ function pickFile(it, size) {
   return { url: best.url, video: !f.webp && !f.gif, w: best.width, h: best.height };
 }
 
-export const hasGifApi = () => !!KLIPY_KEY;
+// ---------- raspador (função "unfurl" no Supabase, com o robô de prévias do Discord) ----------
+const UNFURL = `${SUPABASE_URL}/functions/v1/unfurl`;
+const unfurlCache = new Map();
+async function callUnfurl(qs) {
+  const { data } = await sb.auth.getSession();
+  const r = await fetch(`${UNFURL}?${qs}`, { headers: { Authorization: `Bearer ${data.session?.access_token || ''}` } });
+  return r.json();
+}
+/** prévia de um link: { site, title, description, image, video, player, gif, color } (ou null) */
+export function unfurl(url) {
+  if (!unfurlCache.has(url)) {
+    let saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem('uf:' + url) || 'null'); } catch {}
+    unfurlCache.set(url, saved ? Promise.resolve(saved) : callUnfurl('url=' + encodeURIComponent(url)).then((j) => {
+      const v = j && !j.error ? j : null;
+      try { sessionStorage.setItem('uf:' + url, JSON.stringify(v)); } catch {}
+      return v;
+    }).catch(() => null));
+  }
+  return unfurlCache.get(url);
+}
+/** links do texto (até 3), sem repetir */
+export const linksIn = (text) => [...new Set(String(text || '').match(/https?:\/\/[^\s<]+[^\s<.,;:!?)\]'"]/g) || [])].slice(0, 3);
+/** página de GIF (Tenor, GIPHY, KLIPY, Imgur) que o raspador transforma em GIF */
+export const isGifPage = (text) => /^https:\/\/(www\.)?(tenor\.com\/(view|[a-z-]+\/view)|giphy\.com\/(gifs|stickers)|klipy\.com\/(gifs|stickers|clips)|imgur\.com\/)/i.test(String(text || '').trim());
+
+export const hasGifApi = () => true; // sem chave do KLIPY a busca usa o Tenor pelo raspador
 
 /** busca (q) ou em alta (sem q). Devolve [{ id, slug, title, preview, send, w, h }] */
 export async function searchGifs(q, page = 1) {
-  if (!KLIPY_KEY) throw new Error('sem chave');
+  if (!KLIPY_KEY) {
+    const j = await callUnfurl('gifs=' + encodeURIComponent(q || ''));
+    return (j?.results || []).map((g, i) => ({ id: g.url + i, slug: null, title: '', preview: { url: g.preview, video: false, w: 1, h: 1 }, send: { url: g.url, video: false } }));
+  }
   const base = `https://api.klipy.com/api/v1/${KLIPY_KEY}/gifs/${q ? 'search' : 'trending'}`;
   const params = new URLSearchParams({ page: String(page), per_page: '30', customer_id: S.uid || 'anon', locale: 'br', content_filter: 'medium' });
   if (q) params.set('q', q);

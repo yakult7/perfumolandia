@@ -13,6 +13,10 @@ import { CallStage, MiniCall, Theater } from './call.js';
 import { Friends, DMList } from './home.js';
 import { Modals, IncomingCall, InstallBanner } from './modals.js';
 import { RemoteLayer } from './remote.js';
+import { ProfilePopover, UserCard } from './popover.js';
+import { ShopPage } from './shop.js';
+import { userMenu } from './usermenu.js';
+import { plateOf } from '../nameplates.js';
 import { MePage } from './settings.js';
 import logo from '../logo.png';
 
@@ -26,6 +30,7 @@ export function Shell() {
     <${Modals} />
     <${IncomingCall} />
     <${RemoteLayer} />
+    <${ProfilePopover} />
     ${menu ? html`<${GlassMenu} key=${menu.key} menu=${menu} onClose=${closeMenu} />` : null}
     ${audioBlocked ? html`<button class="gbtn primary audio-unlock" onClick=${rtc.unlockAudio}><${Icon} n="volume" /> Toque para ativar o som da chamada</button>` : null}
     <${Toasts} />
@@ -40,6 +45,8 @@ function DesktopShell() {
   const isServerText = useS((s) => !!s.view.serverId && !!s.view.channelId);
   const groupId = useS((s) => (s.groups[s.view.channelId] ? s.view.channelId : null));
   const connected = useS((s) => s.connected);
+  const dmOther = useS((s) => { const d = s.dms[s.view.channelId]; return d ? d.members.find((m) => m !== s.uid) : null; });
+  const dmProfile = useS((s) => s.settings.dmProfile !== false);
   return html`
     <div class="shell desk">
       ${!connected ? html`<div class="offline-pill lg">Reconectando…</div>` : null}
@@ -50,10 +57,11 @@ function DesktopShell() {
         <${UserBar} />
       </aside>
       <main class="main panel surface">
-        ${stage ? html`<${CallStage} />` : view.channelId ? html`<${Chat} key=${view.channelId} cid=${view.channelId} />` : html`<${Friends} />`}
+        ${stage ? html`<${CallStage} />` : view.channelId ? html`<${Chat} key=${view.channelId} cid=${view.channelId} />` : view.homeTab === 'shop' && !view.serverId ? html`<${ShopPage} />` : html`<${Friends} />`}
       </main>
       ${!stage && showMembers && isServerText ? html`<${Members} ids=${S.servers[view.serverId]?.members || []} ownerId=${S.servers[view.serverId]?.ownerId} />` : null}
       ${!stage && showMembers && groupId ? html`<${Members} ids=${S.groups[groupId].members} ownerId=${S.groups[groupId].ownerId} />` : null}
+      ${!stage && dmOther && dmProfile ? html`<aside class="dm-profile panel material"><div class="side-scroll"><${UserCard} uid=${dmOther} panel /></div></aside>` : null}
     </div>`;
 }
 
@@ -246,7 +254,7 @@ function Members({ ids, ownerId }) {
   const on = rows.filter((r) => r.st !== 'offline').sort((a, b) => a.name.localeCompare(b.name));
   const off = rows.filter((r) => r.st === 'offline').sort((a, b) => a.name.localeCompare(b.name));
   const Row = (r) => html`
-    <button key=${r.uid} class=${cx('member', r.st === 'offline' && 'dim')} onClick=${(e) => openModal('profile', { id: r.uid })}>
+    <button key=${r.uid} class=${cx('member', r.st === 'offline' && 'dim', plateOf(S.users[r.uid]) && 'np ' + plateOf(S.users[r.uid]))} onClick=${(e) => openProfile(r.uid, e)} onContextMenu=${(e) => userMenu(e, r.uid)}>
       <${Avatar} id=${r.uid} size=${30} status />
       <span class="mem-name"><span>${r.name}${ownerId === r.uid ? html` <${Icon} n="crown" s=${13} class="crown" />` : null}</span><small><${Activity} id=${r.uid} fallback=${null} /></small></span>
     </button>`;

@@ -6,6 +6,7 @@ import * as api from '../api.js';
 import { openModal, closeModal, openMenu, roomName, serverOfRoom, cancelOutgoing, toast } from '../actions.js';
 import { Avatar, GBtn, Video, Modal, useNow, fmtDur } from './common.js';
 import { nativeScreen } from '../native.js';
+import { userMenu } from './usermenu.js';
 
 /** monta quem está na chamada e o que cada um está mostrando */
 function useCallModel() {
@@ -104,11 +105,11 @@ export function CallDock() {
 }
 
 function personMenu(e, p) {
-  if (p.me) return;
+  if (p.me) return userMenu(e, p.userId);
   e.preventDefault();
   openMenu(e, [
     { label: 'Volume de ' + (S.users[p.userId]?.displayName || ''), icon: html`<${Icon} n="volume" s=${16} />`, onClick: () => openModal('volume', { uid: p.userId, kind: 'cam' }) },
-    { label: 'Ver perfil', icon: html`<${Icon} n="user" s=${16} />`, onClick: () => openModal('profile', { id: p.userId }) },
+    { label: 'Mais opções…', icon: html`<${Icon} n="more" s=${16} />`, onClick: () => setTimeout(() => userMenu({ clientX: e.clientX, clientY: e.clientY }, p.userId)) },
   ]);
 }
 

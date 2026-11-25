@@ -6,6 +6,7 @@ import { run } from '../actions.js';
 import { Avatar } from './common.js';
 import { DECORATIONS, EFFECTS, FRAMES, BUNDLES, itemId } from '../shop.js';
 import { frameHtml } from '../framesart.js';
+import { NAMEPLATES } from '../nameplates.js';
 
 /** efeitos de perfil: camada por cima do cartão (partículas em SVG, posições fixas por índice) */
 const rnd = (i, k) => { const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
@@ -67,6 +68,11 @@ export function MiniCard({ me, deco, frame, effect, c1, c2 }) {
     </div>`;
 }
 
+/** a loja como página (abre no lugar da conversa, só com os itens) */
+export function ShopPage() {
+  return html`<div class="shop-page"><div class="shop-scroll"><${Shop} /></div></div>`;
+}
+
 /** loja: pacotes (tudo combinando), molduras de avatar, molduras de cartão e efeitos. Tudo grátis. */
 export function Shop() {
   const me = useS((s) => s.me);
@@ -74,7 +80,7 @@ export function Shop() {
   if (!me) return null;
   const owned = new Set(me.items || []);
   const save = (patch, msg) => run(api.updateProfile(patch), msg);
-  const tabs = [['pack', 'Pacotes'], ['deco', 'Molduras de avatar'], ['frame', 'Cartões de perfil'], ['fx', 'Efeitos']];
+  const tabs = [['pack', 'Pacotes'], ['deco', 'Molduras de avatar'], ['frame', 'Cartões de perfil'], ['plate', 'Placas'], ['fx', 'Efeitos']];
   const usingBundle = (b) => me.decoration === b.deco && me.frame === b.frame && me.effect === b.effect;
   const Btn = ({ has, on, redeem, equip, unequip }) => (!has
     ? html`<button class="gbtn sm primary wide" onClick=${redeem}><${Icon} n="gift" s=${14} /> Resgatar grátis</button>`
@@ -86,7 +92,8 @@ export function Shop() {
     return html`
       <div key=${it.id} class=${cx('shop-card', on && 'on')}>
         <div class="shop-prev" style=${`--pc1:${me.color || '#5e5ce6'};--pc2:${me.accent || me.color || '#5e5ce6'}`}>
-          ${k === 'deco' ? html`<${Avatar} id=${me.id} size=${70} deco=${it.id} />`
+          ${k === 'plate' ? html`<div class=${'plate-prev np np-' + it.id}><${Avatar} id=${me.id} size=${30} status /><span class="mem-name"><b class=${'np-name np-' + it.id}>${me.displayName}</b><small>${it.desc}</small></span></div>`
+            : k === 'deco' ? html`<${Avatar} id=${me.id} size=${70} deco=${it.id} />`
             : k === 'frame' ? html`<div class="shop-mini"><${MiniCard} me=${me} deco=${me.decoration} frame=${it.id} effect=${null} /></div>`
             : html`<${ProfileEffect} effect=${it.id} /><${Avatar} id=${me.id} size=${52} />`}
         </div>
@@ -117,6 +124,6 @@ export function Shop() {
               </div>
             </div>`;
         })}</div>`
-      : html`<div class=${cx('shop-grid', kind === 'frame' && 'wide')}>${kind === 'deco' ? single(DECORATIONS, 'deco', 'decoration', 'deco') : kind === 'frame' ? single(FRAMES, 'frame', 'frame', 'frame') : single(EFFECTS, 'fx', 'effect', 'fx')}</div>`}
+      : html`<div class=${cx('shop-grid', (kind === 'frame' || kind === 'plate') && 'wide')}>${kind === 'deco' ? single(DECORATIONS, 'deco', 'decoration', 'deco') : kind === 'frame' ? single(FRAMES, 'frame', 'frame', 'frame') : kind === 'plate' ? single(NAMEPLATES, 'plate', 'nameplate', 'plate') : single(EFFECTS, 'fx', 'effect', 'fx')}</div>`}
     </div>`;
 }

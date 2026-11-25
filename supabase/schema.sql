@@ -34,6 +34,7 @@ alter table public.profiles add column if not exists decoration text;
 alter table public.profiles add column if not exists profile_effect text;
 alter table public.profiles add column if not exists items text[] not null default '{}';
 alter table public.profiles add column if not exists profile_frame text;
+alter table public.profiles add column if not exists nameplate text;
 alter table public.profiles enable row level security;
 drop policy if exists "profiles read" on public.profiles;
 create policy "profiles read" on public.profiles for select to authenticated using (true);

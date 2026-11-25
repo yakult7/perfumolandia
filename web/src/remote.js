@@ -97,7 +97,9 @@ export async function onRemoteEvent(e) {
   const r = S.remote;
   switch (e.type) {
     case 'rc-req':
-      if (!desk()?.rcStart || !isFriend(e.from)) return api.sendEvent({ type: 'rc-deny', to: e.from, id: e.id, why: 'indisponivel' });
+      // celular/navegador da mesma conta ficam quietos: só o app do Windows pode aceitar
+      // (antes o celular respondia "indisponível" e cancelava o pedido antes do PC aceitar)
+      if (!desk()?.rcStart || !isFriend(e.from) || S.settings.blocked?.[e.from]) return;
       if (S.remote || S.rcIncoming) return api.sendEvent({ type: 'rc-deny', to: e.from, id: e.id, why: 'ocupado' });
       set((s) => { s.rcIncoming = { from: e.from, id: e.id }; });
       sounds.ring(false);

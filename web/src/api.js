@@ -35,7 +35,7 @@ export const mapUser = (p) => ({
   id: p.id, username: p.username, displayName: p.display_name, avatar: p.avatar_url, color: p.color,
   chosenStatus: p.status, customStatus: p.custom_status, bio: p.bio,
   banner: p.banner_url || null, accent: p.accent_color || null, pronouns: p.pronouns || '', createdAt: Date.parse(p.created_at),
-  decoration: p.decoration || null, effect: p.profile_effect || null, frame: p.profile_frame || null, items: p.items || [],
+  decoration: p.decoration || null, effect: p.profile_effect || null, frame: p.profile_frame || null, nameplate: p.nameplate || null, items: p.items || [],
 });
 const mapGroup = (g, members = []) => ({ id: g.id, name: g.name, icon: g.icon_url, ownerId: g.owner_id, members });
 export const mapMsg = (m) => ({
@@ -294,6 +294,7 @@ function onMessageChange({ eventType, new: row, old }) {
   const viewing = S.view.channelId === m.channelId && document.visibilityState === 'visible';
   if (mine || viewing) return markRead(m.channelId);
   if (m.type === 'call') return; // a chamada já toca o próprio som
+  if (S.settings.mutedUsers?.[m.authorId] || S.settings.blocked?.[m.authorId] || S.settings.ignored?.[m.authorId]) return;
   const isDM = !!S.dms[m.channelId] || !!S.groups[m.channelId];
   const mentioned = m.content.includes('@' + S.me.username) || m.content.includes('@todos');
   if (S.me.chosenStatus !== 'dnd' && (isDM || mentioned)) {
@@ -391,6 +392,7 @@ function onEvent(e) {
       break;
     }
     case 'ring':
+      if (S.settings.blocked?.[e.from]) return;
       if ((!S.dms[e.dmId] && !S.groups[e.dmId]) || S.call?.roomId === e.dmId || S.me.chosenStatus === 'dnd') return;
       if (S.incoming?.dmId === e.dmId) return; // já está tocando (o toque é reenviado a cada 8s)
       set((s) => { s.incoming = { dmId: e.dmId, from: e.from, msgId: e.msgId || null }; });
@@ -514,9 +516,10 @@ export async function updateProfile(patch) {
   if ('decoration' in patch) row.decoration = patch.decoration;
   if ('effect' in patch) row.profile_effect = patch.effect;
   if ('frame' in patch) row.profile_frame = patch.frame;
+  if ('nameplate' in patch) row.nameplate = patch.nameplate;
   if ('items' in patch) row.items = [...new Set(patch.items)];
   const res = await sb.from('profiles').update(row).eq('id', S.uid).select().single();
-  if (res.error && /decoration|profile_effect|profile_frame|items/.test(res.error.message)) throw new Error('A loja ainda não foi ativada no banco de dados.');
+  if (res.error && /decoration|profile_effect|profile_frame|nameplate|items/.test(res.error.message)) throw new Error('A loja ainda não foi ativada no banco de dados.');
   const p = must(res);
   set((s) => { s.users = { ...s.users, [p.id]: mapUser(p) }; s.me = s.users[p.id]; });
   if ('status' in patch) trackPresence();

@@ -21,6 +21,7 @@ function App() {
 
 applyTheme();
 import('./decoart.js').then((m) => m.installDecoDefs());
+import('./nameplates.js').then((m) => m.installNameplates());
 document.documentElement.classList.toggle('native', isNativeApp);
 if (window.perfumolandiaDesktop) {
   document.documentElement.classList.add('desktop-app');

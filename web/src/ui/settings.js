@@ -31,7 +31,8 @@ export function Settings({ tab: t0 = 'account' }) {
     addEventListener('keydown', k);
     return () => removeEventListener('keydown', k);
   }, []);
-  const items = TABS.map((t) => ({ key: t.key, title: t.label, render: () => html`<${Icon} n=${t.icon} s=${16} /><span>${t.label}</span>` }));
+  const tabsHere = mobile ? TABS : TABS.filter((t) => t.key !== 'shop');
+  const items = tabsHere.map((t) => ({ key: t.key, title: t.label, render: () => html`<${Icon} n=${t.icon} s=${16} /><span>${t.label}</span>` }));
   return html`
     <div class="settings-wrap" onPointerDown=${(e) => e.target === e.currentTarget && closeModal()}>
       <div class="settings sheet pop">

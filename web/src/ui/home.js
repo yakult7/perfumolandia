@@ -5,6 +5,8 @@ import { GlassBar } from '../glass.js';
 import * as api from '../api.js';
 import { openDM, callDM, run, safe, isUnread, statusOf, dmPartner, openModal, openMenu, go, toast, groupName } from '../actions.js';
 import { Avatar, GBtn, Empty, STATUS_LABEL, GroupAvatar, Activity } from './common.js';
+import { userMenu, nameOf } from './usermenu.js';
+import { plateOf } from '../nameplates.js';
 
 export function Friends({ mobile }) {
   const tab = useS((s) => s.view.homeTab);
@@ -51,7 +53,7 @@ function FriendRow({ r }) {
   const outgoing = r.status === 'pending' && r.from === S.uid;
   const call = async () => { const dm = await openDM(other); callDM(dm.id); };
   return html`
-    <div class="frow" onClick=${() => r.status === 'accepted' && openDM(other)}>
+    <div class="frow" onClick=${() => r.status === 'accepted' && openDM(other)} onContextMenu=${(e) => userMenu(e, other)}>
       <${Avatar} id=${other} size=${42} status />
       <div class="frow-name">
         <b>${u.displayName}</b>
@@ -104,16 +106,18 @@ export function DMList() {
   const voice = useS((s) => s.voice);
   // mais recentes primeiro (usa o cache local de mensagens; quem tem mensagem vem antes de quem não tem)
   const rank = (id) => S.messages[id]?.list.at(-1)?.createdAt || (last[id] ? 1 : 0);
+  const hiddenTick = useS((s) => s.settings.hiddenDms);
+  const shopOn = useS((s) => s.view.homeTab === 'shop' && !s.view.channelId); // re-renderiza ao fechar conversa
   const list = [
-    ...Object.values(dms).filter((d) => S.users[d.members.find((m) => m !== S.uid)]).map((d) => ({ d, group: false })),
+    ...Object.values(dms).filter((d) => { const o = d.members.find((m) => m !== S.uid); const hid = S.settings.hiddenDms?.[d.id]; return S.users[o] && !S.settings.blocked?.[o] && !(hid && rank(d.id) <= hid); }).map((d) => ({ d, group: false })),
     ...Object.values(groups).map((d) => ({ d, group: true })),
   ].sort((a, b) => rank(b.d.id) - rank(a.d.id));
   return html`
     <div class="dmlist">
-      <button class=${cx('ch big', !cur && 'on')} onClick=${() => { set((s) => { s.view = { serverId: null, channelId: null, homeTab: s.view.homeTab === 'add' ? 'online' : s.view.homeTab }; s.ui = { ...s.ui, tab: 'friends', pane: 'list', stage: false }; }); }}>
+      <button class=${cx('ch big', !cur && !shopOn && 'on')} onClick=${() => { set((s) => { s.view = { serverId: null, channelId: null, homeTab: s.view.homeTab === 'add' ? 'online' : s.view.homeTab }; s.ui = { ...s.ui, tab: 'friends', pane: 'list', stage: false }; }); }}>
         <${Icon} n="users" s=${18} /><span>Amigos</span>
       </button>
-      <button class="ch big" onClick=${() => openModal('settings', { tab: 'shop' })}><${Icon} n="gift" s=${18} /><span>Loja</span><span class="new-pill">Novo</span></button>
+      <button class=${cx('ch big', shopOn && 'on')} onClick=${() => set((s) => { s.view = { serverId: null, channelId: null, homeTab: 'shop' }; s.ui = { ...s.ui, stage: false }; })}><${Icon} n="gift" s=${18} /><span>Loja</span><span class="new-pill">Novo</span></button>
       <div class="ch-group-head"><span>Conversas</span>
         <button class="mini-btn" title="Novo grupo" onClick=${() => openModal('createGroup')}><${Icon} n="plus" s=${15} /></button>
       </div>
@@ -140,9 +144,9 @@ function DMRow({ d, on, inCall }) {
   const unread = useS((s) => isUnread(s, d.id));
   const st = useS((s) => statusOf(s, other));
   return html`
-    <button class=${cx('dm', on && 'on', unread && 'unread')} onClick=${() => { set((s) => { s.ui = { ...s.ui, stage: false }; }); go(null, d.id); }}>
+    <button class=${cx('dm', on && 'on', unread && 'unread', plateOf(u) && 'np np-hover ' + plateOf(u))} onClick=${() => { set((s) => { s.ui = { ...s.ui, stage: false }; }); go(null, d.id); }} onContextMenu=${(e) => userMenu(e, other, { dmId: d.id })}>
       <${Avatar} id=${other} size=${32} status />
-      <span class="dm-name"><b>${u?.displayName}</b><small>${inCall ? '📞 Em chamada' : html`<${Activity} id=${other} fallback=${u?.customStatus || STATUS_LABEL[st]} />`}</small></span>
+      <span class="dm-name"><b class=${cx(plateOf(u) && 'np-name ' + plateOf(u))}>${nameOf(other, u?.displayName)}</b><small>${inCall ? '📞 Em chamada' : html`<${Activity} id=${other} fallback=${u?.customStatus || STATUS_LABEL[st]} />`}</small></span>
       ${unread ? html`<i class="pill-dot"></i>` : null}
     </button>`;
 }

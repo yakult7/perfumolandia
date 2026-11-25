@@ -4,6 +4,7 @@ import { Icon } from '../icons.js';
 import * as api from '../api.js';
 import { inviteLink } from '../config.js';
 import { requestControl } from '../remote.js';
+import { inviteToServer } from './usermenu.js';
 import { closeModal, run, safe, go, toast, openDM, acceptCall, declineCall, callDM, statusOf, groupName, openModal } from '../actions.js';
 import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, STATUS_LABEL, GroupAvatar } from './common.js';
 import { ProfileCard } from './profile.js';
@@ -16,7 +17,7 @@ export function Modals() {
   const m = useS((s) => s.ui.modal);
   if (!m) return null;
   const C = {
-    addServer: AddServer, createChannel: CreateChannel, renameChannel: RenameChannel, invite: Invite,
+    addServer: AddServer, prompt: Prompt, inviteTo: InviteTo, createChannel: CreateChannel, renameChannel: RenameChannel, invite: Invite,
     serverSettings: ServerSettings, confirm: Confirm, profile: Profile, image: ImageView, react: React,
     screenShare: ScreenShareModal, volume: VolumeModal, settings: Settings, install: InstallHelp,
     createGroup: CreateGroup, groupSettings: GroupSettings, addToGroup: AddToGroup,
@@ -221,6 +222,32 @@ function ServerSettings({ id }) {
             </div>`)}
         </div>
       </div>
+    <//>`;
+}
+
+function Prompt({ title, label, value = '', placeholder = '', multiline, max = 100, onSave }) {
+  const [v, setV] = useState(value);
+  const save = (e) => { e?.preventDefault(); onSave(v); closeModal(); };
+  return html`
+    <${Modal} title=${title}>
+      <form class="stack" onSubmit=${save}>
+        <${Field} label=${label}>${multiline
+          ? html`<textarea rows="4" maxlength=${max} value=${v} placeholder=${placeholder} onInput=${(e) => setV(e.target.value)} autofocus></textarea>`
+          : html`<input maxlength=${max} value=${v} placeholder=${placeholder} onInput=${(e) => setV(e.target.value)} autofocus />`}<//>
+        <div class="row end"><button type="button" class="gbtn" onClick=${closeModal}>Cancelar</button><button class="gbtn primary">Salvar</button></div>
+      </form>
+    <//>`;
+}
+
+function InviteTo({ uid }) {
+  const servers = useS((s) => Object.values(s.servers));
+  const u = S.users[uid];
+  return html`
+    <${Modal} title=${'Convidar ' + (u?.displayName || '') + ' para um servidor'}>
+      <div class="stack" style="gap:6px">${servers.map((sv) => html`
+        <button key=${sv.id} class="invite-row" onClick=${() => { closeModal(); inviteToServer(uid, sv.id).then(() => toast('Convite enviado na conversa.')); }}>
+          <span class="rail-ic">${sv.icon ? html`<img src=${sv.icon} alt="" />` : html`<b>${sv.name.slice(0, 2)}</b>`}</span><b>${sv.name}</b><span class="muted small">Enviar convite</span>
+        </button>`)}</div>
     <//>`;
 }
 

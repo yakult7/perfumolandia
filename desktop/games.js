@@ -22,13 +22,14 @@ const KNOWN = {
 
 const PS = `
 $ErrorActionPreference='SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.Path } | ForEach-Object {
   [pscustomobject]@{ n=$_.ProcessName; i=$_.Id; p=$_.Path; t=$_.MainWindowTitle; d=$_.MainModule.FileVersionInfo.FileDescription }
 } | ConvertTo-Json -Compress`;
 
 function listWindows() {
   return new Promise((resolve) => {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PS], { windowsHide: true, timeout: 15000, maxBuffer: 4 << 20 }, (err, out) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PS], { windowsHide: true, timeout: 15000, maxBuffer: 4 << 20, encoding: 'utf8' }, (err, out) => {
       try { const j = JSON.parse(out || '[]'); resolve(Array.isArray(j) ? j : [j]); } catch { resolve([]); }
     });
   });
@@ -58,7 +59,25 @@ function steamInfo(exePath) {
   return info;
 }
 
+// jogos/plataformas com nome e capa próprios (FiveM = GTA RP etc.)
+const SPECIAL = [
+  { re: /^fivem(_b\d+)?_gtaprocess$|^fivem$/, name: 'FiveM', steam: 271590, fromTitle: true },
+  { re: /^redm(_b\d+)?_rdr3$|^redm$/, name: 'RedM', steam: 1174180, fromTitle: true },
+  { re: /^altv(\.exe)?$|^altv$/, name: 'alt:V', steam: 271590 },
+  { re: /^ragemp_v$/, name: 'RAGE Multiplayer', steam: 271590 },
+  { re: /^gta5(_enhanced)?$/, name: 'Grand Theft Auto V', steam: 271590 },
+  { re: /^cs2$/, name: 'Counter-Strike 2', steam: 730 },
+];
 function pick(list) {
+  // primeiro os especiais (o processo do jogo, não o launcher)
+  for (const sp of SPECIAL) {
+    const w = list.filter((x) => sp.re.test(String(x.n || '').toLowerCase())).sort((a, b) => String(b.n).length - String(a.n).length)[0];
+    if (w) {
+      // FiveM: o título da janela traz o servidor ("FiveM® by Cfx.re - New Era Roleplay")
+      const server = sp.fromTitle ? (/ - (.+)$/.exec(String(w.t || ''))?.[1] || '').replace(/\^\d/g, '').trim() : '';
+      return { w, name: sp.name, steam: sp.steam, detail: server && !/^fivem|cfx/i.test(server) ? server : '' };
+    }
+  }
   for (const w of list) {
     const n = String(w.n || '').toLowerCase();
     const p = String(w.p || '');
@@ -121,6 +140,9 @@ async function detectGame(app, listIn) {
   const hit = pick(listIn || (await listWindows()));
   if (!hit) return null;
   const { w } = hit;
+  if (hit.steam) {
+    return { key: 'sp:' + hit.name + hit.detail, name: hit.detail ? `${hit.name} · ${hit.detail}` : hit.name, img: await steamHeader(String(hit.steam)), wide: true };
+  }
   const steam = steamInfo(w.p);
   if (steam?.appid) {
     return { key: 'steam:' + steam.appid, name: steam.name, img: await steamHeader(steam.appid), wide: true };

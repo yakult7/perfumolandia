@@ -1,5 +1,5 @@
 import { html, useState, useRef, useEffect, useLayoutEffect, useMemo, cx, timeAgo, fmtSize } from '../lib.js';
-import { useS, S, setUI, set } from '../store.js';
+import { useS, S, setUI, set, setSettings } from '../store.js';
 import { Icon } from '../icons.js';
 import * as api from '../api.js';
 import * as rtc from '../rtc.js';
@@ -7,9 +7,12 @@ import { md, isBigEmoji } from '../markdown.js';
 import { sendMessage, loadMessages, markRead, openMenu, openModal, back, run, safe, toast, dmPartner, callDM, statusOf, groupName } from '../actions.js';
 import { Avatar, GBtn, Spinner, Empty, STATUS_LABEL, GroupAvatar, Activity } from './common.js';
 import { CallDock } from './call.js';
-import { GifPicker, LinkMedia, isLinkMedia } from './gifpicker.js';
+import { GifPicker, LinkMedia, isLinkMedia, Embeds } from './gifpicker.js';
 import { reportShare } from '../gifs.js';
 import { requestControl } from '../remote.js';
+import { openProfile } from './popover.js';
+import { userMenu, nameOf, isIgnored, isBlocked } from './usermenu.js';
+import { plateOf } from '../nameplates.js';
 import { readableColor, effectiveMode } from '../theme.js';
 
 export const QUICK = ['👍', '❤️', '😂', '🔥', '😮', '😢'];
@@ -40,6 +43,7 @@ export function Chat({ cid, mobile }) {
 
   const other = dm ? dmPartner(dm) : null;
   const otherPc = useS((s) => !!(other && s.pcs[other.id]));
+  const showProfile = useS((s) => s.settings.dmProfile !== false);
   const title = dm ? other.displayName : group ? groupName(group) : ch?.name;
   const direct = !!(dm || group);
   const startCall = async (video) => {
@@ -57,7 +61,7 @@ export function Chat({ cid, mobile }) {
     <div class=${cx('chat', callHere && expandedCall && !mobile && 'call-full')}>
       <header class="top lg chat-top">
         ${mobile ? html`<button class="gbtn icon-only sm plain" aria-label="Voltar" onClick=${() => history.back()}><${Icon} n="back" s=${19} /></button>` : null}
-        <div class=${cx('top-title', direct && 'click')} onClick=${() => (dm ? openModal('profile', { id: other.id }) : group && openModal('groupSettings', { id: cid }))}>
+        <div class=${cx('top-title', direct && 'click')} onClick=${(e) => (dm ? openProfile(other.id, e) : group && openModal('groupSettings', { id: cid }))} onContextMenu=${(e) => dm && userMenu(e, other.id, { dmId: cid })}>
           ${dm ? html`<${Avatar} id=${other.id} size=${26} status />` : group ? html`<${GroupAvatar} g=${group} size=${26} />` : html`<${Icon} n="hash" s=${17} />`}
           <b>${title}</b>
           ${dm ? html`<${DmStatus} id=${other.id} />` : group ? html`<small class="muted">${group.members.length} membros</small>` : null}
@@ -70,6 +74,7 @@ export function Chat({ cid, mobile }) {
             ${dm && otherPc ? html`<${GBtn} icon="remote" title="Controlar o PC (estilo AnyDesk; ele precisa permitir)" class="icon-only sm" onClick=${() => requestControl(other.id)} size=${15} />` : null}` : null}
           ${group ? html`<${GBtn} icon="more" title="Grupo" class="icon-only sm" onClick=${groupMenu} size=${15} />` : null}
           ${sv && !mobile ? html`<${GBtn} icon="users" title="Membros" class="icon-only sm" onClick=${() => setUI({ showMembers: !S.ui.showMembers })} size=${15} />` : null}
+          ${dm && !mobile ? html`<${GBtn} icon="user" title=${showProfile ? 'Esconder perfil' : 'Mostrar perfil'} class=${cx('icon-only sm', showProfile && 'on')} onClick=${() => setSettings({ dmProfile: !showProfile })} size=${15} />` : null}
           ${sv ? html`<${GBtn} icon="userPlus" title="Convidar" class="icon-only sm" onClick=${() => openModal('invite', { id: sv.id })} size=${15} />` : null}
         </div>
       </header>
@@ -178,7 +183,15 @@ function CallLog({ m }) {
 
 function Message({ m, grouped, names, onReply, editing, setEditing }) {
   if (m.type === 'call') return html`<${CallLog} m=${m} />`;
+  if (isIgnored(m.authorId)) return html`<${IgnoredMessage} m=${m} grouped=${grouped} names=${names} onReply=${onReply} editing=${editing} setEditing=${setEditing} />`;
   return html`<${TextMessage} m=${m} grouped=${grouped} names=${names} onReply=${onReply} editing=${editing} setEditing=${setEditing} />`;
+}
+
+function IgnoredMessage(props) {
+  const [show, setShow] = useState(false);
+  useS((s) => s.settings.ignored?.[props.m.authorId] || s.settings.blocked?.[props.m.authorId]);
+  if (show) return html`<${TextMessage} ...${props} />`;
+  return html`<div class="msg ignored"><button class="ignored-pill" onClick=${() => setShow(true)}><${Icon} n="eyeOff" s=${13} /> Mensagem de usuário ${isBlocked(props.m.authorId) ? 'bloqueado' : 'ignorado'} · mostrar</button></div>`;
 }
 
 function TextMessage({ m, grouped, names, onReply, editing, setEditing }) {
@@ -216,16 +229,16 @@ function TextMessage({ m, grouped, names, onReply, editing, setEditing }) {
         </div>` : null}
       <div class="msg-row">
         ${grouped ? html`<span class="msg-time-side">${new Date(m.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>`
-          : html`<button class="msg-av" onClick=${() => openModal('profile', { id: m.authorId })}><${Avatar} id=${m.authorId} size=${36} /></button>`}
+          : html`<button class="msg-av" onClick=${(e) => openProfile(m.authorId, e)} onContextMenu=${(e) => userMenu(e, m.authorId)}><${Avatar} id=${m.authorId} size=${36} /></button>`}
         <div class="msg-body">
           ${grouped ? null : html`
             <div class="msg-head">
-              <b style=${`color:${readableColor(author?.color, theme)}`} onClick=${() => openModal('profile', { id: m.authorId })}>${author?.displayName || 'Alguém'}</b>
+              <b class=${cx('msg-author', theme === 'dark' && plateOf(author) && 'np-name ' + plateOf(author))} style=${`color:${readableColor(author?.color, theme)}`} onClick=${(e) => openProfile(m.authorId, e)} onContextMenu=${(e) => userMenu(e, m.authorId)}>${nameOf(m.authorId, author?.displayName)}</b>
               <time>${timeAgo(m.createdAt)}</time>
             </div>`}
           ${editing ? html`<${EditBox} m=${m} done=${() => setEditing(null)} />`
             : m.content && isLinkMedia(m.content) ? html`<${LinkMedia} text=${m.content} />`
-            : m.content ? html`<div class=${cx('msg-text', isBigEmoji(m.content) && 'big-emoji')} dangerouslySetInnerHTML=${{ __html: md(m.content, names) }}></div>` : null}
+            : m.content ? html`<div class=${cx('msg-text', isBigEmoji(m.content) && 'big-emoji')} dangerouslySetInnerHTML=${{ __html: md(m.content, names) }}></div><${Embeds} text=${m.content} />` : null}
           ${m.editedAt && !editing ? html`<small class="edited">(editada)</small>` : null}
           ${m.attachments?.length ? html`<div class="atts">${m.attachments.map((a, i) => html`<${Attachment} key=${i} a=${a} />`)}</div>` : null}
           ${Object.keys(m.reactions || {}).length ? html`
