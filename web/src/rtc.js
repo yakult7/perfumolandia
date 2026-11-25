@@ -204,7 +204,8 @@ class Peer {
     this.audio.set(stream.id, el);
     applyVolumes();
     el.play().catch(() => setUI({ audioBlocked: true }));
-    watchLevel(stream.id, this.userId, stream, () => { const k = this.kindOf(stream.id); return k !== 'screen' && k !== 'music'; });
+    if (hasRtpLevels) startLevels();
+    else watchLevel(stream.id, this.userId, stream, () => { const k = this.kindOf(stream.id); return k !== 'screen' && k !== 'music'; });
   }
   detachAudio(id) {
     const el = this.audio.get(id);
@@ -323,12 +324,15 @@ function watchLevel(key, uid, stream, filter = () => true) {
     const ctx = audioCtx();
     const src = ctx.createMediaStreamSource(stream);
     const an = ctx.createAnalyser();
-    an.fftSize = 512;
+    an.fftSize = 2048; // ~43 ms de áudio por leitura (antes 10 ms: pegava o silêncio entre as sílabas)
     src.connect(an);
     levels.set(key, { an, src, uid, filter, data: new Float32Array(an.fftSize) });
   } catch {}
-  if (!levelTimer) levelTimer = setInterval(tickLevels, 110);
+  startLevels();
 }
+const startLevels = () => { if (!levelTimer) levelTimer = setInterval(tickLevels, 80); };
+// nível de áudio que o próprio WebRTC mede em cada pacote recebido (preciso e sem custo extra)
+const hasRtpLevels = typeof RTCRtpReceiver !== 'undefined' && 'getSynchronizationSources' in RTCRtpReceiver.prototype;
 function unwatchLevel(key) {
   const l = levels.get(key);
   if (l) { try { l.src.disconnect(); } catch {} }
@@ -343,9 +347,22 @@ function tickLevels() {
     let sum = 0;
     for (let i = 0; i < l.data.length; i++) sum += l.data[i] * l.data[i];
     const rms = Math.sqrt(sum / l.data.length);
-    if (rms > 0.018) speakingHold[l.uid] = now;
+    if (rms > 0.011) speakingHold[l.uid] = now;
   }
-  for (const [uid, t] of Object.entries(speakingHold)) if (now - t < 320) speaking[uid] = true;
+  if (hasRtpLevels) {
+    for (const p of peers.values()) {
+      for (const r of p.pc.getReceivers()) {
+        if (r.track?.kind !== 'audio' || r.track.readyState !== 'live') continue;
+        // só a voz (não o som da tela nem a música compartilhada)
+        const stream = [...p.remote.values()].find((st) => st.getAudioTracks().includes(r.track));
+        const kind = stream ? p.kindOf(stream.id) : 'mic';
+        if (kind === 'screen' || kind === 'music') continue;
+        const lvl = r.getSynchronizationSources()[0]?.audioLevel;
+        if (lvl > 0.012) speakingHold[p.userId] = now;
+      }
+    }
+  }
+  for (const [uid, t] of Object.entries(speakingHold)) if (now - t < 420) speaking[uid] = true;
   const prev = S.speaking;
   const changed = Object.keys(speaking).length !== Object.keys(prev).length || Object.keys(speaking).some((k) => !prev[k]);
   if (changed) set((s) => { s.speaking = speaking; });

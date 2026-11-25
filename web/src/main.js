@@ -20,6 +20,12 @@ function App() {
 }
 
 applyTheme();
+// janela sem foco (jogando) ou escondida: pausa toda animação e tira a refração do vidro -> CPU perto de zero
+const setIdle = () => document.documentElement.classList.toggle('idle', document.hidden || !document.hasFocus());
+addEventListener('focus', setIdle);
+addEventListener('blur', setIdle);
+document.addEventListener('visibilitychange', setIdle);
+setIdle();
 import('./decoart.js').then((m) => m.installDecoDefs());
 import('./nameplates.js').then((m) => m.installNameplates());
 document.documentElement.classList.toggle('native', isNativeApp);

@@ -101,6 +101,8 @@ export function UserCard({ uid, compact, panel }) {
 /** painel de perfil na lateral da conversa (como no Discord): o painel inteiro é o perfil */
 export function ProfilePanel({ uid }) {
   const u = useS((s) => s.users[uid]);
+  const [play, setPlay] = useState(true);
+  useEffect(() => { setPlay(true); const t = setTimeout(() => setPlay(false), 10000); return () => clearTimeout(t); }, [uid]);
   const st = useS((s) => statusOf(s, uid));
   const note = useS((s) => s.settings.notes?.[uid] || '');
   const nick = useS((s) => s.settings.nicknames?.[uid] || '');
@@ -109,10 +111,10 @@ export function ProfilePanel({ uid }) {
   const frame = hasFrame(u.frame) ? u.frame : null;
   const mutual = Object.values(S.servers).filter((sv) => sv.members?.includes(uid));
   const groups = Object.values(S.groups).filter((g) => g.members.includes(uid) && g.members.includes(S.uid));
-  const since = u.createdAt ? new Date(u.createdAt).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const since = u?.createdAt ? new Date(u.createdAt).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
   const mutualText = [mutual.length ? `${mutual.length} ${mutual.length === 1 ? 'servidor' : 'servidores'} em comum` : '', groups.length ? `${groups.length} ${groups.length === 1 ? 'grupo' : 'grupos'} em comum` : ''].filter(Boolean).join(' • ');
   return html`
-    <div class=${cx('pp', frame && 'framed')} style=${`--pc1:${c1};--pc2:${c2}`}>
+    <div class=${cx('pp', frame && 'framed', play && 'play')} style=${`--pc1:${c1};--pc2:${c2}`}>
       <${ProfileEffect} effect=${u.effect} />
       <div class="pp-banner">${u.banner ? html`<img src=${u.banner} alt="" />` : null}</div>
       <div class="pp-tools">

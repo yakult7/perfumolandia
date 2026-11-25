@@ -35,6 +35,10 @@ export function Chat({ cid, mobile }) {
   const [editing, setEditing] = useState(null);
 
   useEffect(() => { loadMessages(cid); markRead(cid); }, [cid]);
+  // ao reconectar o app recarrega tudo e esvazia as mensagens: a conversa aberta pede de novo
+  // (antes ficava um "carregando" girando para sempre, redesenhando a tela e gastando CPU)
+  const hasBox = useS((s) => !!s.messages[cid]);
+  useEffect(() => { if (!hasBox) loadMessages(cid); }, [hasBox, cid]);
   useEffect(() => {
     const f = () => document.visibilityState === 'visible' && markRead(cid);
     document.addEventListener('visibilitychange', f);

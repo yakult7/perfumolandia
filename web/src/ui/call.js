@@ -3,7 +3,7 @@ import { useS, S, setUI, setSettings } from '../store.js';
 import { Icon } from '../icons.js';
 import * as rtc from '../rtc.js';
 import * as api from '../api.js';
-import { openModal, closeModal, openMenu, roomName, serverOfRoom, cancelOutgoing, toast } from '../actions.js';
+import { openModal, closeModal, openMenu, roomName, serverOfRoom, cancelOutgoing, toast, roomMembers } from '../actions.js';
 import { Avatar, GBtn, Video, Modal, useNow, fmtDur } from './common.js';
 import { nativeScreen } from '../native.js';
 import { userMenu } from './usermenu.js';
@@ -37,6 +37,10 @@ export function CallStage({ mobile, docked, collapsed, onCollapse, onExpand, exp
   useNow(1000);
   if (!m) return null;
   const { call, all, media, focus, noCam, bots } = m;
+  // chamando: quem ainda não atendeu aparece piscando
+  const ghosts = outgoing && outgoing.dmId === call.roomId
+    ? roomMembers(call.roomId).filter((uid) => uid !== S.uid && !all.some((p) => p.userId === uid)).map((uid) => ({ sid: 'ghost-' + uid, userId: uid, ghost: true, state: {} }))
+    : [];
   const sv = serverOfRoom(call.roomId);
   const others = focus ? media.filter((t) => t !== focus) : media;
   const cols = others.length <= 1 ? 1 : others.length <= 4 ? 2 : 3;
@@ -60,7 +64,7 @@ export function CallStage({ mobile, docked, collapsed, onCollapse, onExpand, exp
       ${collapsed ? null : html`
         <div class="stage-body">
           ${media.length === 0 ? html`
-            <div class="people">${all.map((p) => html`<${Person} key=${p.sid} p=${p} size=${docked ? 64 : mobile ? 84 : 96} />`)}${bots.map((b) => html`<${MusicPerson} key=${b.sid} b=${b} size=${docked ? 64 : mobile ? 84 : 96} />`)}</div>`
+            <div class="people">${all.map((p) => html`<${Person} key=${p.sid} p=${p} size=${docked ? 64 : mobile ? 84 : 96} />`)}${ghosts.map((p) => html`<${Person} key=${p.sid} p=${p} size=${docked ? 64 : mobile ? 84 : 96} />`)}${bots.map((b) => html`<${MusicPerson} key=${b.sid} b=${b} size=${docked ? 64 : mobile ? 84 : 96} />`)}</div>`
           : focus ? html`
             <div class="stage-main"><${Tile} t=${focus} big /></div>
             ${others.length ? html`<div class="stage-side">${others.map((t) => html`<${Tile} key=${t.id} t=${t} />`)}</div>` : null}`
@@ -119,13 +123,14 @@ function Person({ p, size }) {
   const speaking = useS((s) => !!s.speaking[p.userId]);
   const st = p.state || {};
   return html`
-    <div class=${cx('person', speaking && 'speaking')} onContextMenu=${(e) => personMenu(e, p)}>
+    <div class=${cx('person', speaking && 'speaking', p.ghost && 'ghost')} onContextMenu=${(e) => personMenu(e, p)}>
       <div class="av-wrap">
         <${Avatar} id=${p.userId} size=${size} ring />
         ${st.deafened || st.muted ? html`<span class="av-mute"><${Icon} n=${st.deafened ? 'headphonesOff' : 'micOff'} s=${13} /></span>` : null}
         ${st.screen ? html`<span class="av-live live">AO VIVO</span>` : null}
       </div>
       <b>${u?.displayName}${p.me ? ' (você)' : ''}</b>
+      ${p.ghost ? html`<small class="ghost-label">Chamando…</small>` : null}
     </div>`;
 }
 /** a música compartilhada: capa girando como disco; clicar silencia/ativa só para você */

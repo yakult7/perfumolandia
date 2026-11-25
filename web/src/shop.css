@@ -280,3 +280,27 @@
 .pp-frame .pframe .fr-side.r { right: -9px; }
 .pp-frame .pframe .fr-bottom { translate: 0 30%; }
 .panel-card .pcard { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--pc1) 55%, rgba(255, 255, 255, 0.25)); }
+
+/* =====================================================================
+   DESEMPENHO: animações decorativas só quando você está olhando
+   ===================================================================== */
+/* molduras de avatar, de cartão, efeitos e placas ficam paradas por padrão... */
+.deco svg *, .pframe *, .pfx > i, .pfx > b, .np::before { animation-play-state: paused; }
+/* ...e animam ao passar o mouse, no perfil aberto (popover/modal), no painel lateral nos primeiros segundos e na loja ao passar o mouse */
+.avatar:hover .deco svg *, .dm:hover .deco svg *, .member:hover .deco svg *, .msg:hover .msg-av .deco svg *, .userbar:hover .deco svg *,
+.ppop .deco svg *, .ppop .pframe *, .ppop .pfx > i, .ppop .pfx > b,
+.modal .deco svg *, .modal .pframe *, .modal .pfx > i, .modal .pfx > b,
+.pp.play .deco svg *, .pp.play .pframe *, .pp.play .pfx > i, .pp.play .pfx > b,
+.pp:hover .deco svg *, .pp:hover .pframe *, .pp:hover .pfx > i, .pp:hover .pfx > b,
+.shop-card:hover .deco svg *, .shop-card:hover .pframe *, .shop-card:hover .pfx > i, .shop-card:hover .pfx > b,
+.bundle:hover .deco svg *, .bundle:hover .pframe *, .bundle:hover .pfx > i, .bundle:hover .pfx > b,
+.np:hover::before, .shop-card:hover .np::before, .call .deco svg *, .stage .person.speaking .deco svg * { animation-play-state: running; }
+/* janela sem foco ou escondida (jogo na frente): para tudo e tira a refração do vidro */
+html.idle *, html.idle *::before, html.idle *::after { animation-play-state: paused !important; }
+html.idle .lg, html.idle .gbtn, html.idle .lens { backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important; -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important; }
+
+/* chamando: quem ainda não atendeu fica piscando */
+.person.ghost .av-wrap { animation: ghost-pulse 1.4s ease-in-out infinite; }
+.person.ghost > b { opacity: 0.75; }
+.ghost-label { font-size: 11.5px; color: rgba(235, 235, 245, 0.6); }
+@keyframes ghost-pulse { 0%, 100% { opacity: 0.35; transform: scale(0.94); } 50% { opacity: 1; transform: scale(1); } }
