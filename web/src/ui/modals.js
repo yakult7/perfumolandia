@@ -5,6 +5,7 @@ import * as api from '../api.js';
 import { inviteLink } from '../config.js';
 import { requestControl } from '../remote.js';
 import { inviteToServer } from './usermenu.js';
+import { imageMenu, copyImage, saveImage } from './imagemenu.js';
 import { closeModal, run, safe, go, toast, openDM, acceptCall, declineCall, callDM, statusOf, groupName, openModal } from '../actions.js';
 import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, STATUS_LABEL, GroupAvatar } from './common.js';
 import { ProfileCard } from './profile.js';
@@ -286,10 +287,12 @@ function Profile({ id }) {
 function ImageView({ a }) {
   return html`
     <div class="viewer" onClick=${closeModal}>
-      <img src=${a.url} alt=${a.name} onClick=${(e) => e.stopPropagation()} />
+      ${String(a.type || '').startsWith('video/') ? html`<video src=${a.url} autoplay loop muted playsinline controls onClick=${(e) => e.stopPropagation()}></video>`
+        : html`<img src=${a.url} alt=${a.name} onClick=${(e) => e.stopPropagation()} onContextMenu=${(e) => { e.stopPropagation(); imageMenu(e, a.url, a.name); }} />`}
       <div class="viewer-bar lg" onClick=${(e) => e.stopPropagation()}>
         <span>${a.name}</span>
-        <a class="gbtn sm" href=${a.url} target="_blank" rel="noopener" download=${a.name}><${Icon} n="download" s=${16} /> Baixar</a>
+        <button class="gbtn sm" onClick=${() => copyImage(a.url)}><${Icon} n="copy" s=${16} /> Copiar</button>
+        <button class="gbtn sm" onClick=${() => saveImage(a.url, a.name)}><${Icon} n="download" s=${16} /> Salvar</button>
         <button class="gbtn icon-only sm" onClick=${closeModal} aria-label="Fechar"><${Icon} n="x" s=${18} /></button>
       </div>
     </div>`;

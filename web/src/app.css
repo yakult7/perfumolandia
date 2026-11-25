@@ -158,7 +158,7 @@ html:not(.refract) .lg, html:not(.refract) .gbtn { backdrop-filter: blur(16px) s
 .lg::after, .gbtn::after {
   content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
   box-shadow: inset 0 1px 1.5px var(--glow), inset 0 -1px 1px rgba(255, 255, 255, 0.05), inset 0 0 14px rgba(255, 255, 255, 0.035);
-  background: radial-gradient(180px circle at var(--mx, 25%) var(--my, -30%), rgba(255, 255, 255, 0.13), transparent 62%);
+  background: radial-gradient(180px circle at 25% -30%, rgba(255, 255, 255, 0.13), transparent 62%);
 }
 
 /* lente (seleção arrastável) */
@@ -708,7 +708,7 @@ html.desktop-app .auth-top-brand { top: 44px; }
 /* =====================================================================
    MENUS / FOLHAS / TOASTS
    ===================================================================== */
-.menu { position: fixed; z-index: 120; min-width: 210px; max-width: 290px; padding: 5px; border-radius: 20px; display: flex; flex-direction: column; transform-origin: top left; --glass-tint: var(--glass-tint-strong); }
+.menu { position: fixed; z-index: 220; min-width: 210px; max-width: 290px; padding: 5px; border-radius: 20px; display: flex; flex-direction: column; transform-origin: top left; --glass-tint: var(--glass-tint-strong); }
 .menu-item { position: relative; z-index: 1; display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 12px; color: var(--text); font-size: 13.5px; text-align: left; }
 .menu-item span { flex: 1; }
 .menu-item small { color: var(--text-3); }
@@ -748,7 +748,7 @@ html.desktop-app .auth-top-brand { top: 44px; }
 .vol-row b { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
 
 .viewer { position: fixed; inset: 0; z-index: 110; background: rgba(0, 0, 0, 0.9); display: grid; place-items: center; animation: fade 0.2s; }
-.viewer img { max-width: 94vw; max-height: 82dvh; border-radius: 10px; object-fit: contain; }
+.viewer img, .viewer video { max-width: 94vw; max-height: 82dvh; border-radius: 10px; object-fit: contain; }
 .viewer-bar { position: fixed; bottom: calc(16px + var(--safe-b)); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 6px; padding: 5px 5px 5px 16px; border-radius: 999px; max-width: calc(100% - 24px); color: #fff; --glass-tint: rgba(30, 30, 38, 0.45); }
 .viewer-bar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }
 

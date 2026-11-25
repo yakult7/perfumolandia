@@ -10,6 +10,7 @@ import { CallDock } from './call.js';
 import { GifPicker, LinkMedia, isLinkMedia, Embeds } from './gifpicker.js';
 import { reportShare } from '../gifs.js';
 import { requestControl } from '../remote.js';
+import { imageMenu } from './imagemenu.js';
 import { openProfile } from './popover.js';
 import { userMenu, nameOf, isIgnored, isBlocked } from './usermenu.js';
 import { plateOf } from '../nameplates.js';
@@ -284,7 +285,7 @@ function EditBox({ m, done }) {
 
 function Attachment({ a }) {
   const t = a.type || '';
-  if (t.startsWith('image/')) return html`<button class="att-img" onClick=${() => openModal('image', { a })}><img src=${a.url} alt=${a.name} loading="lazy" /></button>`;
+  if (t.startsWith('image/')) return html`<button class="att-img" onClick=${() => openModal('image', { a })} onContextMenu=${(e) => imageMenu(e, a.url, a.name)}><img src=${a.url} alt=${a.name} loading="lazy" /></button>`;
   if (t.startsWith('video/')) return html`<video class="att-video" src=${a.url} controls playsinline preload="metadata"></video>`;
   if (t.startsWith('audio/')) return html`<audio class="att-audio" src=${a.url} controls preload="metadata"></audio>`;
   return html`

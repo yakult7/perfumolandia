@@ -55,6 +55,7 @@ export const openMenu = (e, items, opts = {}) => {
       x: useAnchor ? r.left : e.clientX ?? r?.left ?? 0,
       y: useAnchor ? r.bottom + 8 : e.clientY ?? r?.bottom ?? 0,
       above: useAnchor ? r.top - 8 : null,
+      right: useAnchor && r.left > innerWidth / 2 ? r.right : null,
       items,
       key: Math.random(),
     },

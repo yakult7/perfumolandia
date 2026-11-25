@@ -135,20 +135,16 @@ new MutationObserver(() => {
 }).observe(document.documentElement, { childList: true, subtree: true });
 export function refreshGlass() { for (const el of tracked) pending.add(el); flush(); }
 
-// ---------- brilho especular que segue o ponteiro ----------
-let lightRaf = 0, lightEv = null;
-addEventListener('pointermove', (e) => {
-  lightEv = e;
-  if (lightRaf || S.settings.perfMode) return;
-  lightRaf = requestAnimationFrame(() => {
-    lightRaf = 0;
-    const t = lightEv.target?.closest?.('.lg, .gbtn');
-    if (!t) return;
-    const r = t.getBoundingClientRect();
-    t.style.setProperty('--mx', ((lightEv.clientX - r.left) / r.width) * 100 + '%');
-    t.style.setProperty('--my', ((lightEv.clientY - r.top) / r.height) * 100 + '%');
-  });
-}, { passive: true });
+// ---------- rolando: refração do vidro desligada até parar ----------
+// a refração é recalculada a cada quadro em que o conteúdo atrás do vidro muda; durante a rolagem
+// fica só o desfoque (igual a olho nu) e 200 ms depois de parar a refração volta.
+let scrollTimer = 0;
+addEventListener('scroll', () => {
+  const root = document.documentElement;
+  if (!root.classList.contains('scrolling')) root.classList.add('scrolling');
+  clearTimeout(scrollTimer);
+  scrollTimer = setTimeout(() => root.classList.remove('scrolling'), 200);
+}, { capture: true, passive: true });
 
 // ---------- barra com lente arrastável ----------
 /**
@@ -315,7 +311,7 @@ export function GlassMenu({ menu, onClose }) {
   useLayoutEffect(() => {
     const r = ref.current.getBoundingClientRect();
     const vw = innerWidth, vh = innerHeight, m = 8;
-    const x = Math.min(menu.x, vw - r.width - m);
+    const x = menu.right != null ? menu.right - r.width : Math.min(menu.x, vw - r.width - m);
     let y = menu.y;
     if (y + r.height > vh - m) y = menu.above != null ? menu.above - r.height : vh - r.height - m;
     setPos({ x: Math.max(m, x), y: Math.max(m, y) });

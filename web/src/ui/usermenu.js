@@ -5,7 +5,7 @@ import { S, setSettings } from '../store.js';
 import { Icon } from '../icons.js';
 import * as api from '../api.js';
 import { openMenu, openModal, openDM, callDM, run, toast, go, sendMessage } from '../actions.js';
-import { inviteLink } from '../config.js';
+import { inviteLink, SITE_URL } from '../config.js';
 import { requestControl } from '../remote.js';
 import { openProfile } from './popover.js';
 
@@ -49,7 +49,8 @@ export function userMenu(e, uid, { dmId, anchor = false } = {}) {
     const servers = Object.values(S.servers);
     if (servers.length) items.push({ label: 'Convidar para servidor', icon: I('userPlus'), onClick: () => openModal('inviteTo', { uid }) });
     items.push(
-      { label: 'Copiar visual do perfil', icon: I('palette'), onClick: () => run(api.updateProfile({
+      { label: 'Compartilhar perfil', icon: I('share'), onClick: () => copy(`${u.displayName} (@${u.username}) na Perfumolandia — ${SITE_URL}`, 'Perfil') },
+      { label: 'Adquira este visual', icon: I('palette'), onClick: () => run(api.updateProfile({
         color: u.color, accent: u.accent || u.color, decoration: u.decoration || null, effect: u.effect || null, frame: u.frame || null, nameplate: u.nameplate || null,
         items: [...new Set([...(S.me.items || []), ...[u.decoration && 'deco:' + u.decoration, u.effect && 'fx:' + u.effect, u.frame && 'frame:' + u.frame, u.nameplate && 'plate:' + u.nameplate].filter(Boolean)])],
       }), 'Visual copiado para o seu perfil!').catch(() => {}) },

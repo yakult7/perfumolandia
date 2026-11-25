@@ -296,7 +296,7 @@
 .bundle:hover .deco svg *, .bundle:hover .pframe *, .bundle:hover .pfx > i, .bundle:hover .pfx > b,
 .np:hover::before, .shop-card:hover .np::before, .call .deco svg *, .stage .person.speaking .deco svg * { animation-play-state: running; }
 /* janela sem foco ou escondida (jogo na frente): para tudo e tira a refração do vidro */
-html.idle *, html.idle *::before, html.idle *::after { animation-play-state: paused !important; }
+html.idle *:not(.pop):not(.menu):not(.toast):not(.modal):not(.modal-wrap):not(.sheet):not(.ppop):not(.rc-incoming), html.idle *::before, html.idle *::after { animation-play-state: paused !important; }
 html.idle .lg, html.idle .gbtn, html.idle .lens { backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important; -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important; }
 
 /* chamando: quem ainda não atendeu fica piscando */
@@ -304,3 +304,9 @@ html.idle .lg, html.idle .gbtn, html.idle .lens { backdrop-filter: blur(var(--lg
 .person.ghost > b { opacity: 0.75; }
 .ghost-label { font-size: 11.5px; color: rgba(235, 235, 245, 0.6); }
 @keyframes ghost-pulse { 0%, 100% { opacity: 0.35; transform: scale(0.94); } 50% { opacity: 1; transform: scale(1); } }
+
+/* rolando, ou vidro sobre vídeo (chamada/tela cheia): só desfoque, sem refração (que custa caro quando o fundo muda) */
+html.scrolling .lg, html.scrolling .gbtn, html.scrolling .lens,
+.stage .lg, .stage .gbtn, .theater .lg, .theater .gbtn, .rc-view .lg, .rc-view .gbtn {
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important; -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat)) !important;
+}

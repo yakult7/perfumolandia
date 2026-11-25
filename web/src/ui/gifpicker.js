@@ -1,5 +1,6 @@
 import { html, useState, useEffect, useRef, cx } from '../lib.js';
 import { Icon } from '../icons.js';
+import { imageMenu } from './imagemenu.js';
 import { openModal } from '../actions.js';
 import { mediaFromText, isGifPage, unfurl, linksIn, searchGifs } from '../gifs.js';
 
@@ -17,8 +18,8 @@ export function LinkMedia({ text }) {
   const video = direct ? (direct.video ? direct.url : null) : page.video;
   const img = direct ? (!direct.video ? direct.url : null) : page.image;
   return video
-    ? html`<video class="link-media" src=${video} autoplay loop muted playsinline onError=${() => setBroken(true)}></video>`
-    : html`<button class="link-media" onClick=${() => openImg(img)}><img src=${img} alt="" loading="lazy" onError=${() => setBroken(true)} /></button>`;
+    ? html`<video class="link-media" src=${video} autoplay loop muted playsinline onError=${() => setBroken(true)} onContextMenu=${(e) => imageMenu(e, video, 'gif')}></video>`
+    : html`<button class="link-media" onClick=${() => openImg(img)} onContextMenu=${(e) => imageMenu(e, img, 'gif')}><img src=${img} alt="" loading="lazy" onError=${() => setBroken(true)} /></button>`;
 }
 
 /** miniaturas dos links da mensagem (como no Discord) */
