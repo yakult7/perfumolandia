@@ -9,6 +9,7 @@ import {
 } from '../actions.js';
 import { Avatar, GBtn, Toasts, STATUS_LABEL, useNow, fmtDur, initials, Activity } from './common.js';
 import { Chat } from './chat.js';
+import { OtpCode } from './otp.js';
 import { CallStage, MiniCall, Theater } from './call.js';
 import { Friends, DMList } from './home.js';
 import { Modals, IncomingCall, InstallBanner, PushBanner } from './modals.js';
@@ -334,47 +335,38 @@ function EmailGate() {
   const [later, setLater] = useState(false);
   const [step, setStep] = useState(pending && !firstErr ? 'code' : 'email');
   const [email, setEmail] = useState(pending || '');
-  const [code, setCode] = useState('');
   const [err, setErr] = useState(firstErr || '');
   const [busy, setBusy] = useState(false);
-  // quem clicou no link do email (em vez de digitar o código): confere sozinho e fecha
-  useEffect(() => {
-    if (!need || later || step !== 'code') return;
-    const t = setInterval(() => api.checkEmail().catch(() => {}), 8000);
-    addEventListener('focus', api.checkEmail);
-    return () => { clearInterval(t); removeEventListener('focus', api.checkEmail); };
-  }, [need, later, step]);
+  const [sentAt, setSentAt] = useState(0);
+  useNow(1000);
   if (!need || later) return null;
-  const act = (fn) => async (e) => {
+  const wait = Math.max(0, 60 - Math.floor((Date.now() - sentAt) / 1000));
+  const send = async (e) => {
     e?.preventDefault?.();
     setErr(''); setBusy(true);
-    try { await fn(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+    try { await api.requestEmail(email); setStep('code'); setSentAt(Date.now()); } catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
-  const send = act(async () => { await api.requestEmail(email); setStep('code'); setCode(''); });
-  const confirm = act(async () => { await api.verifyEmail(code); toast('Email confirmado! Sua conta está mais segura.'); });
+  const done = () => api.checkEmail().then(() => toast('Email confirmado! Sua conta está mais segura.'));
   return html`
     <div class="modal-wrap email-gate">
       <div class="modal sheet pop" role="dialog" aria-modal="true" aria-label="Confirme seu email">
         <div class="modal-body stack">
-          <div class="eg-head"><span class="eg-ic"><${Icon} n="lock" s=${22} /></span>
+          <div class="eg-head"><span class="eg-ic"><${Icon} n=${step === 'email' ? 'shield' : 'mail'} s=${22} /></span>
             <h2>${step === 'email' ? 'Proteja sua conta' : 'Digite o código'}</h2>
             <p>${step === 'email' ? 'Adicione um email para recuperar a conta e deixá-la mais segura. Vamos mandar um código de confirmação.'
-              : html`Mandamos um código para <b>${pending || email}</b>. Olhe também o spam. Se chegou um link, é só clicar nele.`}</p></div>
+              : html`Mandamos um código de 6 números para <b>${pending || email}</b>. Olhe também o spam.`}</p></div>
           ${step === 'email' ? html`
             <form class="stack" onSubmit=${send}>
               <input type="email" class="eg-input" placeholder="seuemail@exemplo.com" autocomplete="email" value=${email} onInput=${(e) => setEmail(e.target.value)} required autofocus />
               ${err ? html`<div class="form-err">${err}</div>` : null}
               <button class="gbtn primary wide" disabled=${busy}>${busy ? 'Enviando…' : 'Enviar código'}</button>
             </form>` : html`
-            <form class="stack" onSubmit=${confirm}>
-              <input class="eg-input eg-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="000000" value=${code} onInput=${(e) => setCode(e.target.value.replace(/\D/g, ''))} required autofocus />
-              ${err ? html`<div class="form-err">${err}</div>` : null}
-              <button class="gbtn primary wide" disabled=${busy || code.length < 6}>${busy ? 'Confirmando…' : 'Confirmar'}</button>
-              <div class="row between eg-links">
-                <button type="button" class="link" onClick=${() => { setStep('email'); setErr(''); }}>Trocar email</button>
-                <button type="button" class="link" disabled=${busy} onClick=${send}>Reenviar código</button>
-              </div>
-            </form>`}
+            <${OtpCode} key=${pending || email} onSubmit=${api.verifyEmail} onDone=${done} />
+            ${err ? html`<div class="form-err">${err}</div>` : null}
+            <div class="row between eg-links">
+              <button type="button" class="link" onClick=${() => { setStep('email'); setErr(''); }}>Trocar email</button>
+              <button type="button" class="link" disabled=${busy || wait > 0} onClick=${send}>${wait > 0 ? `Reenviar em ${wait}s` : busy ? 'Enviando…' : 'Reenviar código'}</button>
+            </div>`}
           <button type="button" class="gbtn plain wide eg-later" onClick=${() => setLater(true)}>Agora não</button>
         </div>
       </div>

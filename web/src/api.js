@@ -104,7 +104,7 @@ export async function checkEmail() {
   // entrou pelo link do email (em vez do código): marca como confirmado
   if (u.app_metadata?.email_pending && (await sb.rpc('finish_email_change')).data) u = (await sb.auth.getUser()).data?.user || u;
   const pending = !fakeEmail(u.email) && !!u.app_metadata?.email_pending;
-  set((s) => { s.needsEmail = fakeEmail(u.email) || pending; s.emailPending = pending ? u.email : null; });
+  set((s) => { s.needsEmail = fakeEmail(u.email) || pending; s.emailPending = pending ? u.email : null; s.myEmail = fakeEmail(u.email) ? null : u.email; });
 }
 /** coloca o email na conta (ainda sem confirmar) e o Supabase manda o código para ele */
 export async function requestEmail(email) {
@@ -114,15 +114,50 @@ export async function requestEmail(email) {
   set((s) => { s.emailPending = e; s.emailError = null; });
   must(await sb.auth.signInWithOtp({ email: e, options: { shouldCreateUser: false } }));
 }
+const tokenOf = (code) => {
+  const token = String(code || '').replace(/\D/g, '');
+  if (token.length < 6) throw new Error('O código tem 6 números.');
+  return token;
+};
+/** confere o código do email novo (não fecha a tela: quem chama roda checkEmail depois da animação) */
 export async function verifyEmail(code) {
   const email = S.emailPending;
   if (!email) throw new Error('Digite seu email primeiro.');
-  const token = code.replace(/\D/g, '');
-  if (token.length < 6) throw new Error('O código tem 6 números.');
-  must(await sb.auth.verifyOtp({ email, token, type: 'email' }));
+  must(await sb.auth.verifyOtp({ email, token: tokenOf(code), type: 'email' }));
   must(await sb.rpc('finish_email_change'));
   await sb.auth.refreshSession().catch(() => {});
-  await checkEmail();
+}
+
+/** trocar o email pelas configurações: conta sem email confirmado usa o caminho acima; com email, o Supabase manda o código para o novo */
+export async function changeEmail(email) {
+  const e = email.trim().toLowerCase();
+  if (!validEmail(e)) throw new Error('Digite um email válido.');
+  if (e === S.myEmail) throw new Error('Esse já é o seu email.');
+  if (!S.myEmail || S.emailPending) { await requestEmail(e); return 'email'; }
+  must(await sb.auth.updateUser({ email: e }));
+  return 'email_change';
+}
+export async function verifyEmailChange(email, code, mode) {
+  if (mode === 'email') return verifyEmail(code);
+  must(await sb.auth.verifyOtp({ email: email.trim().toLowerCase(), token: tokenOf(code), type: 'email_change' }));
+  await sb.auth.refreshSession().catch(() => {});
+}
+
+// ---------- senha ----------
+/** "Esqueceu sua senha?": manda o código para o email (se a conta existir; não conta se existe ou não) */
+export async function sendRecovery(email) {
+  const e = email.trim().toLowerCase();
+  if (!validEmail(e)) throw new Error('Digite o email da sua conta.');
+  must(await sb.auth.resetPasswordForEmail(e));
+}
+export async function verifyRecovery(email, code) {
+  must(await sb.auth.verifyOtp({ email: email.trim().toLowerCase(), token: tokenOf(code), type: 'recovery' }));
+}
+/** depois do código de recuperação: grava a senha nova e entra */
+export async function finishRecovery(password) {
+  if (password.length < 6) throw new Error('A senha precisa ter pelo menos 6 caracteres.');
+  must(await sb.auth.updateUser({ password }));
+  await start();
 }
 
 export async function logout() {
@@ -133,8 +168,13 @@ export async function logout() {
   location.reload();
 }
 
-export async function changePassword(password) {
-  if (password.length < 6) throw new Error('A senha precisa ter pelo menos 6 caracteres.');
+export async function changePassword(current, password) {
+  if (password.length < 6) throw new Error('A senha nova precisa ter pelo menos 6 caracteres.');
+  if (current === password) throw new Error('A senha nova é igual à atual.');
+  // confere a senha atual entrando de novo com ela
+  const { data } = await sb.auth.getUser();
+  const r = await sb.auth.signInWithPassword({ email: data?.user?.email, password: current });
+  if (r.error) throw new Error(/Invalid login/i.test(r.error.message) ? 'A senha atual está errada.' : translate(r.error.message));
   must(await sb.auth.updateUser({ password }));
 }
 

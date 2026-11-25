@@ -1,7 +1,6 @@
 import { html, useState, useEffect, useRef, cx, useMedia } from '../lib.js';
 import { useS, S, setSettings, setUI } from '../store.js';
 import { Icon } from '../icons.js';
-import { GlassBar } from '../glass.js';
 import * as api from '../api.js';
 import * as rtc from '../rtc.js';
 import { Shop } from './shop.js';
@@ -10,72 +9,187 @@ import { Modal, Field, Avatar, GBtn, pickFile, shrinkImage, Video, PasswordInput
 import { statusMenu } from './shell.js';
 import { ProfileEditor, ProfileCard } from './profile.js';
 import { ACCENTS, APP_THEMES, appBackground, effectiveMode } from '../theme.js';
+import { OtpCode } from './otp.js';
 
-const TABS = [
-  { key: 'account', label: 'Perfil', icon: 'user' },
-  { key: 'look', label: 'Aparência', icon: 'brush' },
-  { key: 'theme', label: 'Tema e cores', icon: 'palette' },
-  { key: 'shop', label: 'Loja', icon: 'gift' },
-  { key: 'voice', label: 'Voz e vídeo', icon: 'mic' },
-  { key: 'screen', label: 'Transmissão', icon: 'screen' },
-  { key: 'notify', label: 'Notificações', icon: 'bell' },
-  { key: 'security', label: 'Conta e senha', icon: 'lock' },
-  { key: 'about', label: 'Sobre', icon: 'sparkles' },
+const GROUPS = [
+  { title: 'Sua conta', items: [
+    { key: 'account', label: 'Perfil', icon: 'user', color: '#0a84ff', desc: 'Foto, banner, nome, bio e o visual do seu perfil.' },
+    { key: 'security', label: 'Conta e senha', icon: 'shield', color: '#30d158', desc: 'Usuário, email e senha de acesso.' },
+    { key: 'shop', label: 'Loja', icon: 'gift', color: '#ff375f', desc: 'Decorações, efeitos e molduras para o perfil.', mobileOnly: true },
+  ] },
+  { title: 'App', items: [
+    { key: 'look', label: 'Aparência', icon: 'brush', color: '#bf5af2', desc: 'Claro ou escuro, vidro e modo desempenho.' },
+    { key: 'theme', label: 'Tema e cores', icon: 'palette', color: '#ff9f0a', desc: 'Degradês do fundo e cor de destaque.' },
+    { key: 'voice', label: 'Voz e vídeo', icon: 'mic', color: '#32d74b', desc: 'Microfone, fone, câmera e supressão de ruído.' },
+    { key: 'screen', label: 'Transmissão', icon: 'screen', color: '#64d2ff', desc: 'Qualidade e som ao transmitir a tela.' },
+    { key: 'notify', label: 'Notificações', icon: 'bell', color: '#ff453a', desc: 'Avisos de mensagens, menções e ligações.' },
+  ] },
+  { title: 'Mais', items: [
+    { key: 'about', label: 'Sobre', icon: 'sparkles', color: '#5e5ce6', desc: 'Chamar os amigos e baixar o app.' },
+  ] },
 ];
+const TABS = GROUPS.flatMap((g) => g.items);
 
 export function Settings({ tab: t0 = 'account' }) {
-  const [tab, setTab] = useState(t0);
   const mobile = useMedia('(max-width: 899px)');
+  const me = useS((s) => s.me);
+  const [tab, setTab] = useState(t0 || (mobile ? null : 'account'));
+  const [q, setQ] = useState('');
+  const [ver, setVer] = useState('');
   useEffect(() => {
     const k = (e) => e.key === 'Escape' && closeModal();
     addEventListener('keydown', k);
+    window.perfumolandiaDesktop?.version?.().then(setVer).catch(() => {});
     return () => removeEventListener('keydown', k);
   }, []);
-  const tabsHere = mobile ? TABS : TABS.filter((t) => t.key !== 'shop');
-  const items = tabsHere.map((t) => ({ key: t.key, title: t.label, render: () => html`<${Icon} n=${t.icon} s=${16} /><span>${t.label}</span>` }));
+  const cur = TABS.find((x) => x.key === tab);
+  const showNav = !mobile || !cur;
+  const showBody = !mobile || !!cur;
+  const match = (t) => !q.trim() || (t.label + ' ' + t.desc).toLowerCase().includes(q.trim().toLowerCase());
   return html`
     <div class="settings-wrap" onPointerDown=${(e) => e.target === e.currentTarget && closeModal()}>
-      <div class="settings sheet pop">
-        <nav class="settings-nav">
-          <h2>Ajustes</h2>
-          <${GlassBar} axis=${mobile ? 'x' : 'y'} items=${items} value=${tab} onChange=${setTab} class="snav" itemClass="snav-item" />
-          ${!mobile ? html`<button class="gbtn danger wide logout" onClick=${() => api.logout()}><${Icon} n="logout" s=${15} /> Sair da conta</button>` : null}
-        </nav>
-        <section class="settings-body">
-          <header class="settings-head"><h3>${TABS.find((x) => x.key === tab).label}</h3>
-            <button class="gbtn icon-only sm" onClick=${closeModal} aria-label="Fechar"><${Icon} n="x" s=${15} /></button></header>
-          <div class="settings-scroll">
-            ${tab === 'account' ? html`<${ProfileEditor} />` : null}
-            ${tab === 'voice' ? html`<${Voice} />` : null}
-            ${tab === 'screen' ? html`<${ScreenPrefs} />` : null}
-            ${tab === 'look' ? html`<${Look} />` : null}
-            ${tab === 'theme' ? html`<${ThemeEditor} />` : null}
-            ${tab === 'shop' ? html`<${Shop} />` : null}
-            ${tab === 'notify' ? html`<${Notify} />` : null}
-            ${tab === 'security' ? html`<${Security} />` : null}
-            ${tab === 'about' ? html`<${About} />` : null}
-          </div>
-        </section>
+      <div class=${cx('st sheet pop', mobile && 'st-mobile')}>
+        ${showNav ? html`
+          <nav class="st-nav">
+            <div class="st-nav-top">
+              ${mobile ? html`<div class="st-mtitle"><h2>Ajustes</h2><button class="st-close" onClick=${closeModal} aria-label="Fechar"><${Icon} n="x" s=${15} /></button></div>` : null}
+              ${me ? html`
+                <button class=${cx('st-me', tab === 'account' && 'on')} onClick=${() => setTab('account')}>
+                  <${Avatar} id=${me.id} size=${42} status />
+                  <span><b>${me.displayName}</b><small>@${me.username}</small></span>
+                  <${Icon} n="right" s=${15} />
+                </button>` : null}
+              <label class="st-search"><${Icon} n="search" s=${15} />
+                <input placeholder="Buscar ajuste" value=${q} onInput=${(e) => setQ(e.target.value)} /></label>
+            </div>
+            <div class="st-groups">
+              ${GROUPS.map((g) => {
+                const items = g.items.filter((t) => (mobile || !t.mobileOnly) && match(t));
+                if (!items.length) return null;
+                return html`
+                  <div class="st-group" key=${g.title}>
+                    <span class="st-gtitle">${g.title}</span>
+                    ${items.map((t) => html`
+                      <button key=${t.key} class=${cx('st-item', tab === t.key && 'on')} onClick=${() => setTab(t.key)}>
+                        <span class="st-ic" style=${`--c:${t.color}`}><${Icon} n=${t.icon} s=${15} /></span>
+                        <span class="st-label">${t.label}</span>
+                        ${mobile ? html`<${Icon} n="right" s=${15} />` : null}
+                      </button>`)}
+                  </div>`;
+              })}
+            </div>
+            <div class="st-foot">
+              <button class="st-logout" onClick=${() => api.logout()}><${Icon} n="logout" s=${15} /> Sair da conta</button>
+              <small>Perfumolandia${ver ? ' · v' + ver : ''}</small>
+            </div>
+          </nav>` : null}
+        ${showBody && cur ? html`
+          <section class="st-body">
+            <header class="st-head">
+              ${mobile ? html`<button class="st-back" onClick=${() => setTab(null)} aria-label="Voltar"><${Icon} n="back" s=${18} /></button>` : null}
+              <span class="st-ic big" style=${`--c:${cur.color}`}><${Icon} n=${cur.icon} s=${20} /></span>
+              <div class="st-titles"><h3>${cur.label}</h3><p>${cur.desc}</p></div>
+              <button class="st-close" onClick=${closeModal} aria-label="Fechar"><${Icon} n="x" s=${15} /></button>
+            </header>
+            <div class="st-scroll settings-scroll" key=${tab}>
+              ${tab === 'account' ? html`<${ProfileEditor} />` : null}
+              ${tab === 'voice' ? html`<div class="st-card st-pad"><${Voice} /></div>` : null}
+              ${tab === 'screen' ? html`<div class="st-card st-pad"><${ScreenPrefs} /></div>` : null}
+              ${tab === 'look' ? html`<${Look} />` : null}
+              ${tab === 'theme' ? html`<${ThemeEditor} />` : null}
+              ${tab === 'shop' ? html`<${Shop} />` : null}
+              ${tab === 'notify' ? html`<div class="st-card st-pad"><${Notify} /></div>` : null}
+              ${tab === 'security' ? html`<${Security} />` : null}
+              ${tab === 'about' ? html`<${About} />` : null}
+            </div>
+          </section>` : null}
       </div>
     </div>`;
 }
 
+/** Conta e senha: usuário, email (troca com código) e senha (atual + nova 2x) */
 function Security() {
   const me = useS((s) => s.me);
+  const email = useS((s) => s.myEmail);
+  const pending = useS((s) => s.emailPending);
+  const [cur, setCur] = useState('');
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { api.checkEmail().catch(() => {}); }, []);
   const match = pw === pw2;
+  const save = async (e) => {
+    e.preventDefault();
+    setErr(''); setBusy(true);
+    try {
+      await api.changePassword(cur, pw);
+      toast('Senha alterada.');
+      setCur(''); setPw(''); setPw2('');
+    } catch (x) { setErr(x.message); } finally { setBusy(false); }
+  };
   return html`
-    <div class="group-box">
-      <div class="toggle-row"><span><b>Usuário</b><small>@${me.username} · usado para entrar e para os amigos te adicionarem</small></span>
-        <button class="gbtn sm" onClick=${() => navigator.clipboard?.writeText(me.username).then(() => toast('Copiado.'))}><${Icon} n="copy" s=${14} /> Copiar</button></div>
+    <span class="st-label-top">Entrada</span>
+    <div class="st-card">
+      <div class="st-row">
+        <span class="st-ic sm" style="--c:#0a84ff"><${Icon} n="user" s=${14} /></span>
+        <span class="st-row-main"><b>Usuário</b><small>@${me.username} · para entrar e para os amigos te adicionarem</small></span>
+        <button class="gbtn sm" onClick=${() => navigator.clipboard?.writeText(me.username).then(() => toast('Copiado.'))}><${Icon} n="copy" s=${14} /> Copiar</button>
+      </div>
+      <div class="st-row">
+        <span class="st-ic sm" style="--c:#ff9f0a"><${Icon} n="mail" s=${14} /></span>
+        <span class="st-row-main"><b>Email</b>
+          <small>${email && !pending ? email : pending ? html`${pending} <i class="st-badge warn">não confirmado</i>` : html`Nenhum email <i class="st-badge warn">adicione para recuperar a conta</i>`}</small></span>
+        ${!editing ? html`<button class="gbtn sm" onClick=${() => setEditing(true)}>${email && !pending ? 'Alterar' : pending ? 'Confirmar' : 'Adicionar'}</button>` : null}
+      </div>
+      ${editing ? html`<${EmailChange} initial=${pending || ''} close=${() => setEditing(false)} />` : null}
     </div>
-    <div class="group-box">
-      <${Field} label="Nova senha"><${PasswordInput} autocomplete="new-password" value=${pw} minlength="6" placeholder="Mínimo de 6 caracteres" onInput=${(e) => setPw(e.target.value)} /><//>
-      <${Field} label="Repita a nova senha" hint=${pw2 && !match ? 'As senhas não são iguais.' : ''}><${PasswordInput} autocomplete="new-password" value=${pw2} onInput=${(e) => setPw2(e.target.value)} /><//>
-      <div class="row"><button class="gbtn primary" disabled=${pw.length < 6 || !match} onClick=${() => run(api.changePassword(pw), 'Senha alterada.').then(() => { setPw(''); setPw2(''); }).catch(() => {})}>Alterar senha</button></div>
-    </div>
-    <button class="gbtn danger wide" onClick=${() => api.logout()}><${Icon} n="logout" s=${15} /> Sair da conta</button>`;
+
+    <span class="st-label-top">Senha</span>
+    <form class="st-card st-pad" onSubmit=${save}>
+      <${Field} label="Senha atual"><${PasswordInput} autocomplete="current-password" value=${cur} onInput=${(e) => setCur(e.target.value)} required /><//>
+      <${Field} label="Nova senha"><${PasswordInput} autocomplete="new-password" value=${pw} minlength="6" placeholder="Mínimo de 6 caracteres" onInput=${(e) => setPw(e.target.value)} required /><//>
+      <${Field} label="Repita a nova senha" hint=${pw2 && !match ? 'As senhas não são iguais.' : ''}><${PasswordInput} autocomplete="new-password" value=${pw2} onInput=${(e) => setPw2(e.target.value)} required /><//>
+      ${err ? html`<div class="form-err">${err}</div>` : null}
+      <div class="row end"><button class="gbtn primary" disabled=${busy || !cur || pw.length < 6 || !match}>${busy ? 'Salvando…' : 'Alterar senha'}</button></div>
+    </form>
+
+    <span class="st-label-top">Sessão</span>
+    <div class="st-card">
+      <button class="st-row st-danger" onClick=${() => api.logout()}>
+        <span class="st-ic sm" style="--c:#ff453a"><${Icon} n="logout" s=${14} /></span>
+        <span class="st-row-main"><b>Sair da conta</b><small>Você pode entrar de novo com usuário ou email e senha.</small></span>
+      </button>
+    </div>`;
+}
+
+/** troca/adiciona o email: digita -> código no email novo (com a animação) -> pronto */
+function EmailChange({ initial, close }) {
+  const [email, setEmail] = useState(initial);
+  const [mode, setMode] = useState(null); // null = digitando o email
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const send = async (e) => {
+    e?.preventDefault?.();
+    setErr(''); setBusy(true);
+    try { setMode(await api.changeEmail(email)); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+  };
+  const done = () => api.checkEmail().then(() => { toast('Email confirmado!'); close(); });
+  return html`
+    <div class="st-sub">
+      ${!mode ? html`
+        <form class="st-inline" onSubmit=${send}>
+          <input type="email" placeholder="novoemail@exemplo.com" autocomplete="email" value=${email} onInput=${(e) => setEmail(e.target.value)} required autofocus />
+          <button class="gbtn primary sm" disabled=${busy}>${busy ? 'Enviando…' : 'Enviar código'}</button>
+          <button type="button" class="gbtn sm plain" onClick=${close}>Cancelar</button>
+        </form>` : html`
+        <p class="st-sub-text">Digite o código de 6 números que mandamos para <b>${email}</b>.</p>
+        <${OtpCode} onSubmit=${(c) => api.verifyEmailChange(email, c, mode)} onDone=${done} />
+        <div class="row between"><button type="button" class="link" onClick=${() => setMode(null)}>Trocar email</button>
+          <button type="button" class="link" disabled=${busy} onClick=${send}>Reenviar código</button></div>`}
+      ${err ? html`<div class="form-err">${err}</div>` : null}
+    </div>`;
 }
 
 function useDevices() {
@@ -313,7 +427,7 @@ function About() {
         <button class="gbtn sm" onClick=${() => openModal('install')}><${Icon} n="share" s=${14} /> Instalar no celular</button>
       </div>
     </div>
-    <p class="muted small">Perfumolandia · versão 1.1</p>`;
+    `;
 }
 
 export const Toggle = ({ label, hint, value, onChange }) => html`

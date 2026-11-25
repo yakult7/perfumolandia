@@ -1,6 +1,7 @@
 import { html, useState, useMemo, isStandalone, isElectron } from '../lib.js';
 import * as api from '../api.js';
 import { PasswordInput } from './common.js';
+import { OtpCode } from './otp.js';
 import { Icon } from '../icons.js';
 import { qrSvg } from '../qr.js';
 import { SITE_URL } from '../config.js';
@@ -52,13 +53,14 @@ export function Auth() {
       ${canGoBack ? html`<a class="auth-top-brand" href="../"><img src=${logo} alt="" /><b>Perfumolandia</b></a>`
         : html`<div class="auth-top-brand"><img src=${logo} alt="" /><b>Perfumolandia</b></div>`}
 
-      <div class=${'auth-card lg pop' + (isNew ? ' single' : '')}>
+      <div class=${'auth-card lg pop' + (mode !== 'login' ? ' single' : '')}>
         <div class="auth-main">
           ${canGoBack ? html`<a class="gbtn sm auth-back" href="../"><${Icon} n="back" s=${15} /> Voltar</a>` : null}
           <div class="auth-head">
-            <h1>${isNew ? 'Criar uma conta' : 'Boas-vindas de volta!'}</h1>
-            <p>${isNew ? 'Escolha seu usuário e chame a turma.' : 'Que bom te ver de novo por aqui!'}</p>
+            <h1>${mode === 'forgot' ? 'Recuperar a senha' : isNew ? 'Criar uma conta' : 'Boas-vindas de volta!'}</h1>
+            <p>${mode === 'forgot' ? 'Vamos mandar um código para o email da sua conta.' : isNew ? 'Escolha seu usuário e chame a turma.' : 'Que bom te ver de novo por aqui!'}</p>
           </div>
+          ${mode === 'forgot' ? html`<${Forgot} back=${() => switchTo('login')} />` : html`
           <form onSubmit=${submit} class="auth-form">
             ${isNew ? html`
               <label class="field"><span class="field-label">Email <i class="req">*</i></span>
@@ -70,6 +72,7 @@ export function Auth() {
                 <input value=${f.displayName} onInput=${up('displayName')} maxlength="32" placeholder="Como os amigos te veem" /></label>` : null}
             <label class="field"><span class="field-label">Senha <i class="req">*</i></span>
               <${PasswordInput} value=${f.password} onInput=${up('password')} autocomplete=${isNew ? 'new-password' : 'current-password'} required minlength="6" /></label>
+            ${!isNew ? html`<button type="button" class="auth-forgot" onClick=${() => switchTo('forgot')}>Esqueceu sua senha?</button>` : null}
             ${isNew ? html`
               <label class="field"><span class="field-label">Repita a senha <i class="req">*</i></span>
                 <${PasswordInput} value=${f.password2} onInput=${up('password2')} autocomplete="new-password" required minlength="6" /></label>
@@ -81,14 +84,58 @@ export function Auth() {
               ${isNew ? html`Já tem uma conta? <button type="button" onClick=${() => switchTo('login')}>Entrar</button>`
                 : html`Precisando de uma conta? <button type="button" onClick=${() => switchTo('register')}>Registre-se</button>`}
             </p>
-          </form>
+          </form>`}
         </div>
-        ${!isNew ? html`
+        ${mode === 'login' ? html`
           <div class="auth-qr">
             <div class="qr-box"><span dangerouslySetInnerHTML=${{ __html: qr }}></span><img class="qr-logo" src=${logo} alt="" /></div>
             <h2>Leve no celular</h2>
             <p>Escaneie com a câmera do celular para instalar a <b>Perfumolandia</b> no iPhone ou Android.</p>
           </div>` : null}
       </div>
+    </div>`;
+}
+
+/** "Esqueceu sua senha?": email -> código (animação) -> senha nova */
+function Forgot({ back }) {
+  const [step, setStep] = useState('email');
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const act = (fn) => async (e) => {
+    e?.preventDefault?.();
+    setErr(''); setBusy(true);
+    try { await fn(); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+  };
+  const send = act(async () => { await api.sendRecovery(email); setStep('code'); });
+  const save = act(async () => {
+    if (pw !== pw2) throw new Error('As senhas não são iguais.');
+    await api.finishRecovery(pw);
+  });
+  return html`
+    <div class="auth-form">
+      ${step === 'email' ? html`
+        <form class="auth-form" onSubmit=${send}>
+          <label class="field"><span class="field-label">Email da conta <i class="req">*</i></span>
+            <input type="email" autocomplete="email" autocapitalize="none" spellcheck="false" value=${email} onInput=${(e) => setEmail(e.target.value)} required autofocus /></label>
+          ${err ? html`<div class="form-err">${err}</div>` : null}
+          <button class="gbtn primary wide auth-submit" disabled=${busy}>${busy ? 'Enviando…' : 'Enviar código'}</button>
+        </form>` : step === 'code' ? html`
+        <p class="auth-note">Se existir uma conta com <b>${email}</b>, chegou um código de 6 números. Olhe também o spam.</p>
+        <${OtpCode} onSubmit=${(c) => api.verifyRecovery(email, c)} onDone=${() => setStep('new')} />
+        ${err ? html`<div class="form-err">${err}</div>` : null}
+        <button type="button" class="auth-forgot" disabled=${busy} onClick=${send}>Reenviar código</button>` : html`
+        <form class="auth-form" onSubmit=${save}>
+          <label class="field"><span class="field-label">Nova senha <i class="req">*</i></span>
+            <${PasswordInput} value=${pw} onInput=${(e) => setPw(e.target.value)} autocomplete="new-password" required minlength="6" autofocus /></label>
+          <label class="field"><span class="field-label">Repita a nova senha <i class="req">*</i></span>
+            <${PasswordInput} value=${pw2} onInput=${(e) => setPw2(e.target.value)} autocomplete="new-password" required minlength="6" /></label>
+          ${pw2 && pw !== pw2 ? html`<small class="form-err">As senhas não são iguais.</small>` : null}
+          ${err ? html`<div class="form-err">${err}</div>` : null}
+          <button class="gbtn primary wide auth-submit" disabled=${busy || pw.length < 6 || pw !== pw2}>${busy ? 'Salvando…' : 'Salvar e entrar'}</button>
+        </form>`}
+      <p class="auth-switch">Lembrou? <button type="button" onClick=${back}>Voltar para o login</button></p>
     </div>`;
 }

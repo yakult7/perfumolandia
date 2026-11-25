@@ -1,5 +1,6 @@
 import './app.css';
 import './shop.css';
+import './settings.css';
 import { html, render } from './lib.js';
 import { useS, S, subscribe, setSettings } from './store.js';
 import * as api from './api.js';
@@ -30,6 +31,7 @@ let wasIdle = false;
 const sweepAnimations = () => {
   for (const a of document.getAnimations()) {
     if (a.effect?.getTiming?.().iterations !== Infinity) continue;
+    if (a.effect?.target?.closest?.('.otp')) continue; // animação do código por email roda sempre
     if (wasIdle && a.playState === 'running') { a.pause(); a.__leve = true; }
     else if (!wasIdle && a.__leve) { a.play(); a.__leve = false; }
   }
