@@ -105,7 +105,9 @@ export function DMList() {
   const cur = useS((s) => s.view.channelId);
   const voice = useS((s) => s.voice);
   // mais recentes primeiro (usa o cache local de mensagens; quem tem mensagem vem antes de quem não tem)
-  const rank = (id) => S.messages[id]?.list.at(-1)?.createdAt || (last[id] ? 1 : 0);
+  // ordem: quem conversou por último primeiro (já certo ao abrir o app, pela data que vem do servidor)
+  const lastAt = useS((s) => s.lastAt);
+  const rank = (id) => Math.max(S.messages[id]?.list.at(-1)?.createdAt || 0, lastAt[id] || 0) || (last[id] ? 1 : 0);
   const hiddenTick = useS((s) => s.settings.hiddenDms);
   const shopOn = useS((s) => s.view.homeTab === 'shop' && !s.view.channelId); // re-renderiza ao fechar conversa
   const list = [

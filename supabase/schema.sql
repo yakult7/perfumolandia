@@ -332,7 +332,9 @@ end $$;
 grant execute on function public.toggle_reaction(uuid, text) to authenticated;
 
 -- última mensagem de cada sala que o usuário vê (para marcar não lidas)
-create or replace function public.last_messages() returns table (channel_id uuid, message_id uuid)
+-- inclui a data da última mensagem: a lista de conversas já abre na ordem certa
+drop function if exists public.last_messages();
+create or replace function public.last_messages() returns table (channel_id uuid, message_id uuid, created_at timestamptz)
 language sql security definer set search_path = public stable as $$
   with rooms as (
     select c.id from channels c join server_members sm on sm.server_id = c.server_id and sm.user_id = auth.uid()
@@ -341,8 +343,9 @@ language sql security definer set search_path = public stable as $$
     union
     select gm.group_id from group_members gm where gm.user_id = auth.uid()
   )
-  select r.id, (select m.id from messages m where m.channel_id = r.id order by m.created_at desc limit 1)
-  from rooms r;
+  select r.id, lm.id, lm.created_at
+  from rooms r
+  left join lateral (select m.id, m.created_at from messages m where m.channel_id = r.id order by m.created_at desc limit 1) lm on true;
 $$;
 grant execute on function public.last_messages() to authenticated;
 

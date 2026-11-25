@@ -130,6 +130,7 @@ async function loadAll(uid) {
     s.servers = svs;
     s.dms = Object.fromEntries(dms.map((d) => [d.id, mapDm(d)]));
     s.lastIds = Object.fromEntries(last.filter((x) => x.message_id).map((x) => [x.channel_id, x.message_id]));
+    s.lastAt = Object.fromEntries(last.filter((x) => x.created_at).map((x) => [x.channel_id, Date.parse(x.created_at)]));
     s.groups = Object.fromEntries(groups.map((g) => [g.id, mapGroup(g, gmembers.filter((m) => m.group_id === g.id).map((m) => m.user_id))]));
     s.messages = {};
   });
@@ -294,6 +295,7 @@ function onMessageChange({ eventType, new: row, old }) {
     const box = s.messages[m.channelId];
     if (box && !box.list.some((x) => x.id === m.id)) s.messages = { ...s.messages, [m.channelId]: { ...box, list: [...box.list, m] } };
     s.lastIds = { ...s.lastIds, [m.channelId]: m.id };
+    s.lastAt = { ...s.lastAt, [m.channelId]: m.createdAt || Date.now() };
     const t = s.typing[m.channelId];
     if (t?.[m.authorId]) { const n = { ...t }; delete n[m.authorId]; s.typing = { ...s.typing, [m.channelId]: n }; }
   });

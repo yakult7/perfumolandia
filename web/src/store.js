@@ -21,7 +21,7 @@ export const DEFAULT_SETTINGS = {
 export const S = {
   booting: true, authed: false, needsProfile: false, uid: null, inviteCode: null,
   me: null, ready: false, connected: false,
-  users: {}, online: {}, games: {}, myGame: null, musics: {}, myMusic: null, pcs: {}, remote: null, rcIncoming: null, relations: {}, servers: {}, dms: {}, groups: {}, messages: {},
+  users: {}, lastAt: {}, online: {}, games: {}, myGame: null, musics: {}, myMusic: null, pcs: {}, remote: null, rcIncoming: null, relations: {}, servers: {}, dms: {}, groups: {}, messages: {},
   lastIds: {}, readIds: load('readIds', {}), voice: {}, typing: {}, speaking: {},
   view: { serverId: null, channelId: null, homeTab: 'online' },
   lastChannel: load('lastChannel', {}),

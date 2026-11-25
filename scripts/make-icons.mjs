@@ -70,12 +70,19 @@ console.log('Ícones gerados.');
 {
   const sizes = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256];
   const pngs = [];
+  // fundo redondo em degradê (o mascote é vidro claro e fino: sozinho ficava pequeno e apagado na barra de tarefas)
+  const disc = (s) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 100 100">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6d5cff"/><stop offset=".55" stop-color="#3b3fd8"/><stop offset="1" stop-color="#1c1f7a"/></linearGradient>
+    <radialGradient id="h" cx=".35" cy=".25" r=".6"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+    <circle cx="50" cy="50" r="49" fill="url(#g)"/><circle cx="50" cy="50" r="49" fill="url(#h)"/>
+    <circle cx="50" cy="50" r="48.4" fill="none" stroke="#ffffff" stroke-opacity=".28" stroke-width="1.2"/></svg>`);
   for (const s of sizes) {
-    const inner = s <= 32 ? s : Math.round(s * 0.96);
-    let img = sharp(logoBuf).resize(inner, inner, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 }, kernel: 'lanczos3' });
+    const inner = Math.round(s * (s <= 24 ? 0.9 : 0.86));
+    let img = sharp(logoBuf).resize(inner, inner, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 }, kernel: 'lanczos3' }).modulate({ brightness: 1.15 });
     if (s <= 64) img = img.sharpen({ sigma: s <= 32 ? 0.6 : 0.4 });
     const fg = await img.png().toBuffer();
-    pngs.push(await sharp({ create: { width: s, height: s, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: fg, gravity: 'center' }]).png().toBuffer());
+    const bg = await sharp(disc(s)).resize(s, s).png().toBuffer();
+    pngs.push(await sharp(bg).composite([{ input: fg, gravity: 'center' }]).png().toBuffer());
   }
   const head = Buffer.alloc(6 + 16 * sizes.length);
   head.writeUInt16LE(0, 0); head.writeUInt16LE(1, 2); head.writeUInt16LE(sizes.length, 4);
