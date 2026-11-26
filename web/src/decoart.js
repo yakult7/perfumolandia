@@ -3,6 +3,7 @@
 // Gradientes e filtros ficam num único <svg> escondido no documento (ids únicos, sem repetir por avatar).
 
 import { rose as frRose, leaf as frLeaf, FRAME_DEFS } from './framesart.js';
+import { imgItem, decoImgHtml } from './shopimg.js';
 const f = (n) => Math.round(n * 10) / 10;
 const rad = (d) => (d * Math.PI) / 180;
 const P = (a, r) => [60 + r * Math.cos(a), 60 + r * Math.sin(a)];
@@ -204,11 +205,13 @@ const ART = {
 
 const cache = new Map();
 export function decoSvg(id) {
+  const im = imgItem(id);
+  if (im?.kind === 'deco') return decoImgHtml(im);
   if (!ART[id]) return '';
   if (!cache.has(id)) cache.set(id, `<svg viewBox="0 0 120 120" class="dk dk-${id}" aria-hidden="true">${ART[id]()}</svg>`);
   return cache.get(id);
 }
-export const hasDeco = (id) => !!ART[id];
+export const hasDeco = (id) => !!ART[id] || imgItem(id)?.kind === 'deco';
 
 /** coloca as definições (gradientes/filtros) uma vez no documento */
 export function installDecoDefs() {

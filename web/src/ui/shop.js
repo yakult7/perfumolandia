@@ -2,11 +2,12 @@ import { html, useState, cx } from '../lib.js';
 import { useS, S } from '../store.js';
 import { Icon } from '../icons.js';
 import * as api from '../api.js';
-import { run } from '../actions.js';
+import { run, openModal } from '../actions.js';
 import { Avatar } from './common.js';
 import { DECORATIONS, EFFECTS, FRAMES, BUNDLES, itemId } from '../shop.js';
 import { frameHtml } from '../framesart.js';
 import { NAMEPLATES } from '../nameplates.js';
+import { imgItem, imgItems } from '../shopimg.js';
 
 /** efeitos de perfil: camada por cima do cartão (partículas em SVG, posições fixas por índice) */
 const rnd = (i, k) => { const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
@@ -49,6 +50,8 @@ function roseSvg(cx, cy, s) {
 const fxCache = new Map();
 export function ProfileEffect({ effect }) {
   if (!effect) return null;
+  const im = imgItem(effect);
+  if (im?.kind === 'fx') return html`<div class="pfx pfx-img" aria-hidden="true"><img src=${im.image} alt="" draggable="false" /></div>`;
   if (!fxCache.has(effect)) fxCache.set(effect, fxHtml(effect));
   return html`<div class=${'pfx pfx-' + effect} aria-hidden="true" dangerouslySetInnerHTML=${{ __html: fxCache.get(effect) }}></div>`;
 }
@@ -74,14 +77,24 @@ export function ShopPage() {
 }
 
 /** loja: pacotes (tudo combinando), molduras de avatar, molduras de cartão e efeitos. Tudo grátis. */
+const fromImg = (it) => ({ id: it.id, name: it.name, desc: it.description, tag: 'Nova' });
 export function Shop() {
   const me = useS((s) => s.me);
   const [kind, setKind] = useState('pack');
+  useS((s) => s.shopImgs); // redesenha quando um item novo é cadastrado
+  const admin = useS((s) => s.shopAdmin);
   if (!me) return null;
+  const DECOS = [...imgItems('deco').map(fromImg), ...DECORATIONS];
+  const FXS = [...imgItems('fx').map(fromImg), ...EFFECTS];
+  const PLATES = [...imgItems('plate').map(fromImg), ...NAMEPLATES];
+  const PACKS = [
+    ...imgItems('bundle').map((b) => ({ id: b.id, name: b.name, deco: b.extra?.deco || null, frame: null, effect: b.extra?.fx || null, plate: b.extra?.plate || null, c1: b.extra?.c1 || '#1e1f22', c2: b.extra?.c2 || '#3a3d44', img: true })),
+    ...BUNDLES,
+  ];
   const owned = new Set(me.items || []);
   const save = (patch, msg) => run(api.updateProfile(patch), msg);
   const tabs = [['pack', 'Pacotes'], ['deco', 'Molduras de avatar'], ['frame', 'Cartões de perfil'], ['plate', 'Placas'], ['fx', 'Efeitos']];
-  const usingBundle = (b) => me.decoration === b.deco && me.frame === b.frame && me.effect === b.effect;
+  const usingBundle = (b) => me.decoration === b.deco && (b.img ? me.nameplate === b.plate : me.frame === b.frame) && me.effect === b.effect;
   const Btn = ({ has, on, redeem, equip, unequip }) => (!has
     ? html`<button class="gbtn sm primary wide" onClick=${redeem}><${Icon} n="gift" s=${14} /> Resgatar grátis</button>`
     : on ? html`<button class="gbtn sm wide" onClick=${unequip}>Em uso · tirar</button>`
@@ -106,11 +119,14 @@ export function Shop() {
     <div class="shop">
       <div class="shop-hero">
         <div><h2>Loja</h2><p class="muted">Pacotes com moldura de avatar, cartão de perfil e efeito animado. Tudo grátis: é só resgatar.</p></div>
+        ${admin ? html`<button class="gbtn sm" onClick=${() => openModal('shopAdmin')}><${Icon} n="plus" s=${14} /> Gerenciar itens</button>` : null}
       </div>
       <div class="seg lg small-seg shop-tabs">${tabs.map(([k, l]) => html`<button key=${k} class=${kind === k ? 'on' : ''} onClick=${() => setKind(k)}>${l}</button>`)}</div>
       ${kind === 'pack' ? html`
-        <div class="bundle-grid">${BUNDLES.map((b) => {
-          const ids = [itemId('deco', b.deco), itemId('frame', b.frame), itemId('fx', b.effect)];
+        <div class="bundle-grid">${PACKS.map((b) => {
+          const ids = b.img
+            ? [b.deco && itemId('deco', b.deco), b.effect && itemId('fx', b.effect), b.plate && itemId('plate', b.plate)].filter(Boolean)
+            : [itemId('deco', b.deco), itemId('frame', b.frame), itemId('fx', b.effect)];
           const has = ids.every((x) => owned.has(x));
           const on = usingBundle(b);
           return html`
@@ -118,12 +134,12 @@ export function Shop() {
               <div class="bundle-stage"><${MiniCard} me=${me} deco=${b.deco} frame=${b.frame} effect=${b.effect} c1=${b.c1} c2=${b.c2} /></div>
               <div class="bundle-info">
                 <b>Pacote ${b.name}</b>
-                <small class="muted">Moldura de avatar, cartão de perfil e efeito · 3 itens</small>
-                ${on ? html`<button class="gbtn sm wide" onClick=${() => save({ decoration: null, frame: null, effect: null }, 'Pacote removido do perfil.')}>Em uso · tirar</button>`
-                  : html`<button class="gbtn sm wide primary" onClick=${() => save({ items: [...owned, ...ids], decoration: b.deco, frame: b.frame, effect: b.effect }, has ? 'Pacote aplicado!' : `Pacote ${b.name} é seu!`)}><${Icon} n="gift" s=${14} /> ${has ? 'Usar pacote' : 'Resgatar e usar'}</button>`}
+                <small class="muted">${b.img ? `Moldura de avatar, efeito e placa · ${ids.length} itens` : 'Moldura de avatar, cartão de perfil e efeito · 3 itens'}</small>
+                ${on ? html`<button class="gbtn sm wide" onClick=${() => save(b.img ? { decoration: null, nameplate: null, effect: null } : { decoration: null, frame: null, effect: null }, 'Pacote removido do perfil.')}>Em uso · tirar</button>`
+                  : html`<button class="gbtn sm wide primary" onClick=${() => save({ items: [...owned, ...ids], decoration: b.deco, effect: b.effect, ...(b.img ? { nameplate: b.plate, frame: null } : { frame: b.frame }) }, has ? 'Pacote aplicado!' : `Pacote ${b.name} é seu!`)}><${Icon} n="gift" s=${14} /> ${has ? 'Usar pacote' : 'Resgatar e usar'}</button>`}
               </div>
             </div>`;
         })}</div>`
-      : html`<div class=${cx('shop-grid', (kind === 'frame' || kind === 'plate') && 'wide')}>${kind === 'deco' ? single(DECORATIONS, 'deco', 'decoration', 'deco') : kind === 'frame' ? single(FRAMES, 'frame', 'frame', 'frame') : kind === 'plate' ? single(NAMEPLATES, 'plate', 'nameplate', 'plate') : single(EFFECTS, 'fx', 'effect', 'fx')}</div>`}
+      : html`<div class=${cx('shop-grid', (kind === 'frame' || kind === 'plate') && 'wide')}>${kind === 'deco' ? single(DECOS, 'deco', 'decoration', 'deco') : kind === 'frame' ? single(FRAMES, 'frame', 'frame', 'frame') : kind === 'plate' ? single(PLATES, 'plate', 'nameplate', 'plate') : single(FXS, 'fx', 'effect', 'fx')}</div>`}
     </div>`;
 }

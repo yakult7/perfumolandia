@@ -14,6 +14,7 @@ import { isNativeApp } from '../native.js';
 import { pushSupported, pushPermission, enablePush } from '../push.js';
 import { SearchModal } from './search.js';
 import { FullProfile } from './fullprofile.js';
+import { ShopAdmin } from './shopadmin.js';
 
 export function Modals() {
   const m = useS((s) => s.ui.modal);
@@ -22,7 +23,7 @@ export function Modals() {
     addServer: AddServer, prompt: Prompt, inviteTo: InviteTo, createChannel: CreateChannel, renameChannel: RenameChannel, invite: Invite,
     serverSettings: ServerSettings, confirm: Confirm, profile: FullProfile, image: ImageView, react: React,
     screenShare: ScreenShareModal, volume: VolumeModal, settings: Settings, install: InstallHelp,
-    createGroup: CreateGroup, groupSettings: GroupSettings, addToGroup: AddToGroup, search: SearchModal,
+    createGroup: CreateGroup, groupSettings: GroupSettings, addToGroup: AddToGroup, search: SearchModal, shopAdmin: ShopAdmin,
   }[m.name];
   return C ? html`<${C} key=${m.name + (m.tab || '')} ...${m} />` : null;
 }

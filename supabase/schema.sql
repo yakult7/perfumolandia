@@ -650,3 +650,32 @@ begin
 end $$;
 drop trigger if exists activity_log_trim on public.activity_log;
 create trigger activity_log_trim after insert on public.activity_log for each row execute function public.trim_activity_log();
+
+-- ---------- loja com imagens (molduras, efeitos, placas e pacotes cadastrados pelo app) ----------
+create table if not exists public.app_admins (user_id uuid primary key references public.profiles on delete cascade);
+alter table public.app_admins enable row level security;
+drop policy if exists "admins read own" on public.app_admins;
+create policy "admins read own" on public.app_admins for select to authenticated using (user_id = auth.uid());
+insert into public.app_admins (user_id) select id from public.profiles where username = 'stopolliny' on conflict do nothing;
+
+create table if not exists public.shop_items (
+  id text primary key check (id ~ '^img-[a-z0-9]{4,24}$'),
+  kind text not null check (kind in ('deco', 'fx', 'plate', 'bundle')),
+  name text not null check (char_length(name) between 1 and 60),
+  description text not null default '' check (char_length(description) <= 200),
+  image text check (image is null or char_length(image) <= 600),
+  still text check (still is null or char_length(still) <= 600),
+  extra jsonb not null default '{}'::jsonb,
+  sort int not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table public.shop_items enable row level security;
+drop policy if exists "shop read" on public.shop_items;
+create policy "shop read" on public.shop_items for select to authenticated using (true);
+drop policy if exists "shop write" on public.shop_items;
+create policy "shop write" on public.shop_items for all to authenticated
+  using (exists (select 1 from public.app_admins a where a.user_id = auth.uid()))
+  with check (exists (select 1 from public.app_admins a where a.user_id = auth.uid()));
+do $$ begin
+  alter publication supabase_realtime add table public.shop_items;
+exception when duplicate_object then null; end $$;

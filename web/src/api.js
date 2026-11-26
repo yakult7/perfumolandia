@@ -6,6 +6,7 @@ import { sounds } from './sounds.js';
 import * as rtc from './rtc.js';
 import { toast, markRead, notifyDesktop, go } from './actions.js';
 import { optimizeImage } from './media.js';
+import { setShopItems } from './shopimg.js';
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, storageKey: 'perfumolandia-auth' },
@@ -200,6 +201,7 @@ export async function start() {
 
 async function loadAll(uid) {
   await loadBlocks(uid);
+  await loadShop(uid);
   const [profiles, relations, servers, members, channels, dms, last, groups, gmembers] = await Promise.all([
     sb.from('profiles').select('*'),
     sb.from('relations').select('*'),
@@ -228,6 +230,27 @@ async function loadAll(uid) {
     s.groups = Object.fromEntries(groups.map((g) => [g.id, mapGroup(g, gmembers.filter((m) => m.group_id === g.id).map((m) => m.user_id))]));
     s.messages = {};
   });
+}
+
+// ---------- loja com imagens ----------
+async function loadShop(uid) {
+  const [items, adm] = await Promise.all([
+    sb.from('shop_items').select('*'),
+    sb.from('app_admins').select('user_id').eq('user_id', uid),
+  ]);
+  if (items.error) return; // tabela ainda não criada
+  setShopItems(items.data);
+  set((s) => { s.shopImgs = items.data; s.shopAdmin = !!adm.data?.length; });
+}
+export const refreshShop = () => loadShop(S.uid);
+/** só para quem é admin da loja (o banco confere) */
+export async function saveShopItem(row) {
+  must(await sb.from('shop_items').upsert(row));
+  await loadShop(S.uid);
+}
+export async function deleteShopItem(id) {
+  must(await sb.from('shop_items').delete().eq('id', id));
+  await loadShop(S.uid);
 }
 
 // ---------- bloqueios (guardados no servidor) ----------
@@ -324,6 +347,7 @@ function makeDb(uid) {
       });
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'blocks' }, () => loadBlocks(uid).catch(() => {}))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'shop_items' }, () => loadShop(uid).catch(() => {}))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'relations' }, ({ new: r, old, eventType }) => set((s) => {
       const n = { ...s.relations };
       if (eventType === 'DELETE') delete n[old.id]; else n[r.id] = mapRel(r);
@@ -814,10 +838,10 @@ export async function deleteChannel(id, serverId) {
 }
 
 /** envia arquivos ao Storage com barra de progresso */
-export async function uploadFiles(files, onProgress, { max = 2560 } = {}) {
+export async function uploadFiles(files, onProgress, { max = 2560, raw = false } = {}) {
   const { data: { session } } = await sb.auth.getSession();
-  // imagens viram WebP antes de subir (economiza espaço e dados)
-  files = await Promise.all([...files].map((f) => (/^image\//.test(f.type) && !/webp$/.test(f.name) ? optimizeImage(f, { max }) : f)));
+  // imagens viram WebP antes de subir (economiza espaço e dados); raw = sobe como está (artes animadas da loja)
+  if (!raw) files = await Promise.all([...files].map((f) => (/^image\//.test(f.type) && !/webp$/.test(f.name) ? optimizeImage(f, { max }) : f)));
   const out = [];
   const total = [...files].reduce((a, f) => a + f.size, 0) || 1;
   let done = 0;

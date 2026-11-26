@@ -1,3 +1,4 @@
+import { imgItem } from './shopimg.js';
 // Placas de identificação (estilo "nameplate" do Discord): arte atrás do nome nas listas
 // + cor/fonte do nome. Nas conversas aparece ao passar o mouse; em grupos e servidores, sempre.
 // A arte é SVG gerado aqui e vira CSS (data URI) injetado uma vez na página.
@@ -65,7 +66,7 @@ export const NAMEPLATES = [
 
 const byId = Object.fromEntries(NAMEPLATES.map((p) => [p.id, p]));
 /** classe da placa de um usuário (ou '') */
-export const plateOf = (u) => (u?.nameplate && byId[u.nameplate] ? 'np-' + u.nameplate : '');
+export const plateOf = (u) => (u?.nameplate && (byId[u.nameplate] || imgItem(u.nameplate)?.kind === 'plate') ? 'np-' + u.nameplate : '');
 
 /** injeta o CSS das placas uma vez */
 export function installNameplates() {
