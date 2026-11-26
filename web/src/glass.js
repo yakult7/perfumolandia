@@ -26,12 +26,15 @@ const filters = new Map(); // chave -> id
 const defs = () => document.getElementById('glass-defs');
 
 /** mapa de deslocamento de uma "gota" de vidro w×h com cantos r: forte nas bordas, neutro no meio */
-function displacementMap(w, h, r) {
+function displacementMap(W, H, R) {
+  // calcula o mapa em resolução menor (o SVG estica): o mesmo efeito com até 20x menos trabalho
+  const f = Math.min(1, 140 / Math.max(W, H));
+  const w = Math.max(8, Math.round(W * f)), h = Math.max(8, Math.round(H * f)), r = R * f;
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
   const img = ctx.createImageData(w, h);
-  const bezel = Math.max(6, Math.min(Math.min(w, h) * 0.5, 26));
+  const bezel = Math.max(6, Math.min(Math.min(W, H) * 0.5, 26)) * f;
   for (let y = 0; y < h; y++) {
     const py = y + 0.5 - h / 2;
     for (let x = 0; x < w; x++) {
@@ -107,16 +110,32 @@ const ro = new ResizeObserver((entries) => {
   clearTimeout(timer);
   timer = setTimeout(flush, 60);
 });
+// vidro dentro de áreas que rolam (mensagens, listas, ajustes) ou muito grande: só desfoque.
+// A refração em CSS é refeita a cada mudança atrás dela; nesses lugares isso custava travadas.
+const NO_REFRACT = '.msgs, .st-scroll, .settings-scroll, .qs-list, .modal-body, .members, .friends-body, .active-now, .shop, .an-card, .msg-tools';
+const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1));
 function flush() {
   const list = pending;
   pending = new Set();
+  const todo = [];
   for (const el of list) {
     if (!el.isConnected) { tracked.delete(el); ro.unobserve(el); continue; }
     const w = el.offsetWidth, h = el.offsetHeight;
     if (!w || !h) continue;
-    const r = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
-    applyRefraction(el, w, h, Math.min(r, Math.min(w, h) / 2));
+    if (w * h > 160000 || el.closest(NO_REFRACT)) { el.style.removeProperty('--lg-filter'); continue; }
+    todo.push([el, w, h]);
   }
+  // calcula fora do quadro (depois que a janela termina de abrir), poucos por vez
+  const step = (deadline) => {
+    while (todo.length && (!deadline || deadline.timeRemaining() > 4)) {
+      const [el, w, h] = todo.shift();
+      if (!el.isConnected) continue;
+      const r = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+      applyRefraction(el, w, h, Math.min(r, Math.min(w, h) / 2));
+    }
+    if (todo.length) idle(step, { timeout: 500 });
+  };
+  if (todo.length) idle(step, { timeout: 500 });
 }
 function scan() {
   if (!supportsRefraction) return;

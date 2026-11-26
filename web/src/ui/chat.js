@@ -105,6 +105,17 @@ function MessageList({ cid, box, title, dm, onReply, editing, setEditing }) {
   const usernames = useS((s) => s.users);
   const names = useMemo(() => new Set(Object.values(usernames).map((u) => u.username)), [usernames]);
 
+  // abriu outra conversa: sempre começa na última mensagem
+  const opened = useRef(0);
+  const touched = useRef(false);
+  useLayoutEffect(() => {
+    stick.current = true;
+    prevH.current = 0;
+    opened.current = Date.now();
+    touched.current = false;
+    const el = ref.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [cid]);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -113,15 +124,24 @@ function MessageList({ cid, box, title, dm, onReply, editing, setEditing }) {
     prevH.current = el.scrollHeight;
   }, [list.length, list[0]?.id]);
   useEffect(() => {
-    // imagens carregando mudam a altura: mantém no fim
+    // imagens, GIFs e prévias de links carregando mudam a altura: mantém no fim
+    // (nos primeiros segundos depois de abrir, sempre; depois, só se você estava no fim)
     const el = ref.current;
-    const ro = new ResizeObserver(() => { if (stick.current) el.scrollTop = el.scrollHeight; });
+    const ro = new ResizeObserver(() => {
+      if (stick.current || (!touched.current && Date.now() - opened.current < 3000)) { el.scrollTop = el.scrollHeight; stick.current = true; }
+    });
     ro.observe(el.firstElementChild || el);
-    return () => ro.disconnect();
+    const mark = () => { touched.current = true; };
+    el.addEventListener('wheel', mark, { passive: true });
+    el.addEventListener('touchstart', mark, { passive: true });
+    el.addEventListener('keydown', mark);
+    return () => { ro.disconnect(); el.removeEventListener('wheel', mark); el.removeEventListener('touchstart', mark); el.removeEventListener('keydown', mark); };
   }, [cid]);
 
   const onScroll = () => {
     const el = ref.current;
+    // só a rolagem da pessoa tira do fim (conteúdo carregando não conta)
+    if (!touched.current && Date.now() - opened.current < 3000) return;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     if (el.scrollTop < 200 && box?.hasMore && !box.loading) { prevH.current = el.scrollHeight; loadMessages(cid, true); }
   };
