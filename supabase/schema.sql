@@ -615,3 +615,38 @@ language sql security definer set search_path = public stable as $$
 $$;
 revoke all on function public.mutual_friends(uuid) from public;
 grant execute on function public.mutual_friends(uuid) to authenticated;
+
+-- ---------- atividade recente (perfil completo) ----------
+-- o app do Windows grava o que você jogou/ouviu; só você e seus amigos veem; guarda os 40 últimos
+create table if not exists public.activity_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references public.profiles on delete cascade,
+  kind text not null check (kind in ('game', 'music')),
+  name text not null check (char_length(name) <= 200),
+  detail text not null default '' check (char_length(detail) <= 200),
+  img text check (img is null or char_length(img) <= 1000),
+  wide boolean not null default false,
+  started_at timestamptz not null default now(),
+  ended_at timestamptz
+);
+create index if not exists activity_log_user on public.activity_log (user_id, started_at desc);
+alter table public.activity_log enable row level security;
+drop policy if exists "activity read" on public.activity_log;
+create policy "activity read" on public.activity_log for select to authenticated
+  using (user_id = auth.uid() or public.are_friends(auth.uid(), user_id));
+drop policy if exists "activity insert" on public.activity_log;
+create policy "activity insert" on public.activity_log for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists "activity update" on public.activity_log;
+create policy "activity update" on public.activity_log for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "activity delete" on public.activity_log;
+create policy "activity delete" on public.activity_log for delete to authenticated using (user_id = auth.uid());
+
+create or replace function public.trim_activity_log() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from activity_log where user_id = new.user_id and id in (
+    select id from activity_log where user_id = new.user_id order by started_at desc offset 40);
+  return new;
+end $$;
+drop trigger if exists activity_log_trim on public.activity_log;
+create trigger activity_log_trim after insert on public.activity_log for each row execute function public.trim_activity_log();

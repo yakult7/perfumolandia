@@ -104,9 +104,13 @@ function Activity({ id }) {
   const voice = useS((s) => s.voice);
   useNow(1000);
   const call = Object.entries(voice).find(([, parts]) => parts.some((p) => p.userId === id));
-  if (!g && !m && !call) return html`<p class="fp-empty"><${Icon} n="game" s=${26} /><br />Nenhuma atividade agora.<br /><small>Quando estiver jogando, ouvindo música ou numa chamada, aparece aqui.</small></p>`;
+  const [recent, setRecent] = useState(null);
+  useEffect(() => { api.recentActivity(id).then(setRecent).catch(() => setRecent([])); }, [id, g?.name, m?.title]);
+  // o que está acontecendo agora não repete na lista de recentes
+  const past = (recent || []).filter((r) => !(r.kind === 'game' && g && r.name === g.name && !r.ended_at) && !(r.kind === 'music' && m && r.name === m.title && !r.ended_at));
+  const now = !!(g || m || call);
   return html`
-    <span class="fp-title">Atividade atual</span>
+    ${now ? html`<span class="fp-title">Atividade atual</span>` : null}
     ${g ? html`
       <div class="fp-act">
         <small>Jogando</small>
@@ -131,5 +135,25 @@ function Activity({ id }) {
           <span class="fp-art ph"><${Icon} n="phone" s=${24} /></span>
           <div><b>${roomName(call[0])}</b><span>${call[1].length} ${call[1].length === 1 ? 'pessoa' : 'pessoas'}</span></div>
         </div>
-      </div>` : null}`;
+      </div>` : null}
+    ${past.length ? html`<span class="fp-title" style=${now ? 'margin-top:8px' : ''}>Atividade recente</span>
+      ${past.map((r) => html`
+        <div class="fp-recent" key=${r.id}>
+          ${r.img ? html`<img class=${cx('fp-rart', r.wide && 'wide')} src=${r.img} alt="" />` : html`<span class="fp-rart ph"><${Icon} n=${r.kind === 'game' ? 'game' : 'music'} s=${20} /></span>`}
+          <div class="fp-recent-main"><b>${r.name}</b>
+            ${r.detail ? html`<span>${r.detail}</span>` : null}
+            <small><${Icon} n=${r.kind === 'game' ? 'game' : 'music'} s=${12} /> ${ago(Date.parse(r.ended_at || r.started_at))}
+              ${r.kind === 'game' && r.ended_at ? html` · <${Icon} n="clock" s=${12} /> ${dur(Date.parse(r.ended_at) - Date.parse(r.started_at))}` : null}</small></div>
+        </div>`)}` : null}
+    ${!now && recent && !past.length ? html`<p class="fp-empty"><${Icon} n="game" s=${26} /><br />Nenhuma atividade ainda.<br /><small>Jogos e músicas do app do Windows aparecem aqui.</small></p>` : null}`;
 }
+/** "agora", "5 min atrás", "8h atrás", "3d atrás", "2 sem." */
+const ago = (ts) => {
+  const m = Math.floor((Date.now() - ts) / 60000);
+  if (m < 1) return 'agora';
+  if (m < 60) return `${m} min atrás`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h}h atrás`;
+  const d = Math.floor(h / 24); if (d < 7) return `${d}d atrás`;
+  return `Há ${Math.floor(d / 7)} sem.`;
+};
+const dur = (ms) => { const m = Math.max(1, Math.round(ms / 60000)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}min` : ''}`; };

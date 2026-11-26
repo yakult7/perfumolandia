@@ -472,12 +472,40 @@ export const refreshPresence = trackPresence;
 export function setMyMusic(m) {
   set((s) => { s.myMusic = m ? { title: m.title, artist: m.artist, art: m.art || null, app: m.app || 'Spotify', pid: m.pid, since: Date.now() } : null; });
   if (!m) rtc.stopMusic?.(); else rtc.refreshMusic?.();
+  logActivity('music', m);
   return trackPresence();
 }
 /** jogo aberto agora (app do Windows): aparece como "Jogando ..." para os amigos */
 export function setMyGame(g) {
   set((s) => { s.myGame = g ? { name: g.name, img: g.img || null, wide: !!g.wide, since: Date.now() } : null; });
+  logActivity('game', g);
   return trackPresence();
+}
+
+// ---------- atividade recente (aparece no perfil completo para os amigos) ----------
+const actOpen = { game: null, music: null };
+const actWait = { game: 0, music: 0 };
+function logActivity(kind, item) {
+  const key = item ? (kind === 'game' ? item.name : `${item.title}|${item.artist}`) : null;
+  if (actOpen[kind]?.key === key) return;
+  clearTimeout(actWait[kind]);
+  const cur = actOpen[kind];
+  if (cur) { actOpen[kind] = null; sb.from('activity_log').update({ ended_at: new Date().toISOString() }).eq('id', cur.id).then(() => {}); }
+  if (!item || !S.uid || S.settings.shareGame === false || S.me?.chosenStatus === 'invisible') return;
+  // música só entra se tocar pelo menos 20 s (pular faixa não enche o histórico)
+  actWait[kind] = setTimeout(() => {
+    const id = crypto.randomUUID();
+    actOpen[kind] = { id, key };
+    const row = kind === 'game'
+      ? { id, kind, name: String(item.name).slice(0, 200), detail: '', img: item.img || null, wide: !!item.wide }
+      : { id, kind, name: String(item.title).slice(0, 200), detail: String(item.artist || '').slice(0, 200), img: item.art || null };
+    sb.from('activity_log').insert(row).then(({ error }) => { if (error) actOpen[kind] = null; });
+  }, kind === 'music' ? 20000 : 0);
+}
+export async function recentActivity(uid) {
+  const { data } = await sb.from('activity_log').select('id,kind,name,detail,img,wide,started_at,ended_at')
+    .eq('user_id', uid).order('started_at', { ascending: false }).limit(20);
+  return data || [];
 }
 
 function onPresenceSync() {
