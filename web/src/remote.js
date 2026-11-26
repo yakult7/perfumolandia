@@ -37,9 +37,19 @@ export async function acceptControl() {
   const info = await d?.rcStart?.();
   if (!info?.sourceId) { api.sendEvent({ type: 'rc-deny', to: inc.from, id: inc.id, why: 'erro' }); return toast('Não deu para liberar o controle neste PC.', 'err'); }
   try {
-    await d.selectSource(info.sourceId, false);
-    // tela inteira na resolução real dele (limitar a 1920x1080 cortava a parte de baixo em telas maiores ou 16:10)
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } }, audio: false });
+    // tela inteira no tamanho real (com a barra de tarefas): pede a captura exatamente do tamanho da tela,
+    // senão o navegador pode recortar para 16:9 e cortar a parte de baixo
+    stream = null;
+    if (info.width && info.height) {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: {
+        chromeMediaSource: 'desktop', chromeMediaSourceId: info.sourceId,
+        minWidth: info.width, maxWidth: info.width, minHeight: info.height, maxHeight: info.height, maxFrameRate: 30,
+      } } }).catch(() => null);
+    }
+    if (!stream) {
+      await d.selectSource(info.sourceId, false);
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 }, resizeMode: 'none' }, audio: false });
+    }
   } catch {
     d.rcStop();
     api.sendEvent({ type: 'rc-deny', to: inc.from, id: inc.id, why: 'erro' });

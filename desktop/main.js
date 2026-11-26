@@ -285,7 +285,9 @@ ipcMain.handle('rc:start', async (e) => {
   proc.on('exit', () => { if (rc?.proc === proc) rc = null; });
   rc = { proc, display };
   try { globalShortcut.register('Control+Alt+F12', () => { e.sender.send('rc-stop'); stopRemote(); }); } catch {}
-  return { sourceId: src?.id || null };
+  // tamanho real da tela (em pixels físicos): a captura usa ele inteiro, com a barra de tarefas
+  const sf = display.scaleFactor || 1;
+  return { sourceId: src?.id || null, width: Math.round(display.bounds.width * sf), height: Math.round(display.bounds.height * sf) };
 });
 const { codeToUiohook } = require('./keymap.js');
 ipcMain.on('rc:input', (e, m) => {
