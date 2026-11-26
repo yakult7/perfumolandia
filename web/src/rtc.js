@@ -89,10 +89,11 @@ function mungeRemote(sdp) {
 }
 
 function encodings(kind, trackKind) {
-  if (trackKind === 'audio') return [{ maxBitrate: kind === 'screen' || kind === 'music' ? 192000 : 96000, priority: 'high', networkPriority: 'high' }];
+  const k = groupScale();
+  if (trackKind === 'audio') return [{ maxBitrate: kind === 'screen' || kind === 'music' ? 192000 : Math.max(32000, Math.round(96000 * k)), priority: 'high', networkPriority: 'high' }];
   if (kind === 'cam') {
     const q = CAM[S.settings.camQuality] || CAM['720p'];
-    return [{ maxBitrate: q.kbps * 1000, maxFramerate: q.fps }];
+    return [{ maxBitrate: Math.round(q.kbps * 1000 * k), maxFramerate: q.fps, scaleResolutionDownBy: k < 1 ? Math.min(3, 1 / Math.sqrt(k)) : 1 }];
   }
   const q = local.screenOpts.q;
   return [{ maxBitrate: q.kbps * 1000, maxFramerate: q.fps, scaleResolutionDownBy: 1, priority: 'high', networkPriority: 'high' }];
@@ -104,6 +105,15 @@ class Peer {
     this.sid = sid;
     this.userId = userId;
     this.polite = api.clientId > sid;
+    // quem tem o id menor começa a conversa (só um lado manda a primeira oferta: sem colisão e metade das mensagens)
+    this.initiator = !this.polite;
+    this.pid = Math.random().toString(36).slice(2, 10); // id desta conexão (muda quando ela é refeita)
+    this.remotePid = null;
+    this.talked = false; // já recebeu algo do outro lado
+    this.born = Date.now();
+    this.badSince = 0;
+    this.missingSince = 0;
+    this.iceWait = [];
     this.makingOffer = false;
     this.ignoreOffer = false;
     this.srdAnswerPending = false;
@@ -115,20 +125,20 @@ class Peer {
     pendingWatch.delete(sid);
     this.queue = Promise.resolve();
     const pc = (this.pc = new RTCPeerConnection({ iceServers: iceServers(), bundlePolicy: 'max-bundle' }));
-    pc.onnegotiationneeded = async () => {
-      try {
-        this.makingOffer = true;
-        await pc.setLocalDescription();
-        api.sendSignal(sid, { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
-      } catch (e) { console.warn('negociação', e); } finally { this.makingOffer = false; }
+    pc.onnegotiationneeded = () => {
+      // quem não inicia espera a primeira oferta do outro lado (depois renegocia normalmente)
+      if (!this.initiator && !this.talked) return;
+      this.negotiate();
     };
-    pc.onicecandidate = ({ candidate }) => candidate && api.sendSignal(sid, { candidate: candidate.toJSON() });
+    pc.onicecandidate = ({ candidate }) => candidate && this.sig({ candidate: candidate.toJSON() });
     pc.ontrack = (e) => this.onTrack(e);
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed') pc.restartIce?.();
+      if (pc.connectionState === 'connected') this.badSince = 0;
+      else if (['failed', 'disconnected'].includes(pc.connectionState) && !this.badSince) this.badSince = Date.now();
       bump();
     };
     if (local.mic) this.send('mic', local.mic);
+    else pc.addTransceiver('audio', { direction: 'recvonly' }); // sem microfone: ainda assim negocia para ouvir os outros
     if (local.cam) this.send('cam', local.cam);
     if (local.screen && this.wantsScreen) this.send('screen', local.screen);
     if (local.music) this.send('music', local.music);
@@ -169,12 +179,28 @@ class Peer {
   replace(kind, track) {
     for (const t of this.tx[kind] || []) if (t.sender.track?.kind === track.kind || !t.sender.track) t.sender.replaceTrack(track).catch(() => {});
   }
+  sig(data) { api.sendSignal(this.sid, { ...data, pid: this.pid }); }
+  async negotiate() {
+    const pc = this.pc;
+    try {
+      this.makingOffer = true;
+      await pc.setLocalDescription();
+      this.sig({ description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
+    } catch (e) { console.warn('negociação', e); } finally { this.makingOffer = false; }
+  }
+  /** tenho áudio/vídeo que ainda não foi combinado com o outro lado (ex.: respondi a primeira oferta e o meu microfone ficou de fora) */
+  pendingSend() {
+    return this.pc.getTransceivers().some((t) => t.sender.track && !t.stopped && !['sendonly', 'sendrecv'].includes(t.currentDirection));
+  }
   onSignal(data) {
     this.queue = this.queue.then(() => this.handle(data)).catch((e) => console.warn('sinal', e));
   }
   async handle({ description, candidate, candidates }) {
     const pc = this.pc;
+    if (description || candidate || candidates) this.talked = true;
     if (description) {
+      // resposta que chegou atrasada/duplicada (não estou esperando resposta): ignora
+      if (description.type === 'answer' && pc.signalingState !== 'have-local-offer') return;
       const ready = !this.makingOffer && (pc.signalingState === 'stable' || this.srdAnswerPending);
       const collision = description.type === 'offer' && !ready;
       this.ignoreOffer = !this.polite && collision;
@@ -182,13 +208,18 @@ class Peer {
       this.srdAnswerPending = description.type === 'answer';
       await pc.setRemoteDescription({ type: description.type, sdp: mungeRemote(description.sdp) });
       this.srdAnswerPending = false;
+      // candidatos que chegaram antes da descrição
+      for (const c of this.iceWait.splice(0)) await pc.addIceCandidate(c).catch(() => {});
       if (description.type === 'offer') {
         await pc.setLocalDescription();
-        api.sendSignal(this.sid, { description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
+        this.sig({ description: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
+        // o navegador não avisa de novo que precisa negociar: se meu som ficou de fora, ofereço agora
+        if (pc.signalingState === 'stable' && this.pendingSend()) this.negotiate();
       }
       return;
     }
     for (const c of candidates || (candidate ? [candidate] : [])) {
+      if (!pc.remoteDescription) { if (!this.ignoreOffer) this.iceWait.push(c); continue; }
       try { await pc.addIceCandidate(c); } catch (e) { if (!this.ignoreOffer) console.warn('ice', e); }
     }
   }
@@ -345,6 +376,7 @@ function boost(el, v, muted) {
     let b = boosts.get(el);
     if (!b) {
       const ctx = audioCtx();
+      if (ctx.state !== 'running') return false;
       const src = ctx.createMediaStreamSource(el.srcObject);
       const gain = ctx.createGain();
       src.connect(gain).connect(ctx.destination);
@@ -444,9 +476,12 @@ export async function getMic() {
 }
 // volume do microfone (0–200%): ganho do Web Audio entre o microfone e o que é enviado
 const micGains = new Set();
+let micReloading = false;
 function withMicGain(stream) {
+  if ((S.settings.micVolume ?? 1) === 1) return stream;
   try {
     const ctx = audioCtx();
+    if (ctx.state !== 'running') return stream; // áudio do navegador ainda bloqueado: manda o microfone direto
     const src = ctx.createMediaStreamSource(stream);
     const g = ctx.createGain();
     g.gain.value = S.settings.micVolume ?? 1;
@@ -465,8 +500,11 @@ function withMicGain(stream) {
   } catch { return stream; }
 }
 export function setMicVolume(v) {
+  const was = S.settings.micVolume ?? 1;
   setSettings({ micVolume: v });
   for (const g of micGains) g.gain.value = v;
+  // saiu de 100% e o microfone da chamada ainda vai direto: refaz com o ganho
+  if (v !== 1 && was === 1 && !micGains.size && !micReloading) { micReloading = true; reloadMic().finally(() => { micReloading = false; }); }
 }
 function micShouldBeOn() {
   const c = S.call;
@@ -511,7 +549,7 @@ export async function join(roomId) {
   applyMic();
   try {
     await api.joinRoomChannel(roomId, {
-      signal: (m) => { const p = peers.get(m.from); if (p) p.onSignal(m.data); else queueEarly(m); },
+      signal: routeSignal,
       watch: onWatch,
       nsignal: onNativeSignal,
     });
@@ -521,8 +559,78 @@ export async function join(roomId) {
   }
   await publish();
   patchCall({ connecting: false });
+  clearInterval(healTimer);
+  healTimer = setInterval(heal, 2000);
   sounds.join();
   onVoiceUpdate(roomId, S.voice[roomId] || []);
+}
+
+// entrega o sinal para a conexão certa; se o outro lado refez a conexão (id novo), refaz a nossa também
+function routeSignal(m) {
+  let p = peers.get(m.from);
+  if (!p) return queueEarly(m);
+  const d = m.data || {};
+  if (d.hello) {
+    // o outro lado está sem conexão (ou sem o meu som) há um tempo: quem inicia refaz
+    if (p.initiator && (d.nomedia || p.pc.connectionState !== 'connected')) resetPeer(m.from);
+    return;
+  }
+  if (d.pid) {
+    if (!p.remotePid) p.remotePid = d.pid;
+    else if (d.pid !== p.remotePid) {
+      if (d.description?.type !== 'offer') return; // resto de uma conexão antiga
+      p = resetPeer(m.from);
+      p.remotePid = d.pid;
+    }
+  }
+  p.onSignal(d);
+}
+function resetPeer(sid) {
+  const old = peers.get(sid);
+  if (!old) return null;
+  old.close();
+  const n = new Peer(sid, old.userId);
+  n.state = old.state;
+  n.wantsScreen = old.wantsScreen;
+  n.screenHint = old.screenHint;
+  n.resets = (old.resets || 0) + 1; // refez várias vezes seguidas: espera mais antes da próxima (rede/PC lento)
+  peers.set(sid, n);
+  bump();
+  return n;
+}
+// vigia das conexões: refaz a que caiu ou nunca conectou (antes ficava "sem ouvir" para sempre)
+let healTimer = null;
+function heal() {
+  if (!S.call) return;
+  onVoiceUpdate(S.call.roomId, S.voice[S.call.roomId] || []); // confere quem sumiu da presença (prazo de espera)
+  const now = Date.now();
+  for (const [sid, p] of peers) {
+    const st = p.pc.connectionState;
+    if (st === 'connected') { if (now - p.born > 30000) p.resets = 0; checkMedia(sid, p, now); continue; }
+    const age = now - p.born;
+    const bad = p.badSince ? now - p.badSince : 0;
+    const slow = Math.min(4, 1 + (p.resets || 0) * 0.75);
+    if (p.initiator) {
+      if (st === 'closed' || st === 'failed' || bad > 8000 * slow || age > 20000 * slow) resetPeer(sid);
+    } else if (st === 'closed' || bad > 12000 * slow || age > 26000 * slow) {
+      p.born = now; p.badSince = 0;
+      api.sendSignal(sid, { hello: true, pid: p.pid });
+    }
+  }
+}
+
+/** conectado mas o som do outro não chega (ele tem microfone): a conexão ficou capenga, refaz */
+async function checkMedia(sid, p, now) {
+  const hasMic = Object.values(p.state?.streams || {}).includes('mic');
+  if (!hasMic || now - p.born < 10000) { p.silentSince = 0; return; }
+  let bytes = 0;
+  try { (await p.pc.getStats()).forEach((r) => { if (r.type === 'inbound-rtp' && r.kind === 'audio') bytes += r.bytesReceived || 0; }); } catch { return; }
+  if (bytes > (p.lastBytes || 0)) { p.lastBytes = bytes; p.silentSince = 0; return; }
+  if (!p.silentSince) { p.silentSince = now; return; }
+  if (now - p.silentSince < 8000 || peers.get(sid) !== p) return;
+  p.silentSince = 0;
+  if (p.initiator) resetPeer(sid);
+  else { p.born = now; api.sendSignal(sid, { hello: true, nomedia: true, pid: p.pid }); }
 }
 
 // sinais que chegam antes de sabermos do participante (presença atrasada)
@@ -542,9 +650,11 @@ export async function leave(silent = false) {
   // se o outro saiu ao mesmo tempo, a presença demora um pouco: confere de novo
   else setTimeout(() => { if (!(S.voice[roomId] || []).length && S.call?.roomId !== roomId) closeCallLog(roomId); }, 5000);
   if (local.native) await stopNativeScreen();
+  clearInterval(healTimer); healTimer = null;
   for (const p of peers.values()) p.close();
   peers.clear();
   early.clear();
+  lastCount = 0;
   stopLocal('mic'); stopLocal('cam'); local.sysAudio?.stop(); local.sysAudio = null; stopLocal('screen'); stopMusic(true);
   for (const k of [...levels.keys()]) unwatchLevel(k);
   clearInterval(levelTimer); levelTimer = null;
@@ -576,10 +686,12 @@ export function onVoiceUpdate(roomId, parts) {
     if (!peer) {
       peer = new Peer(p.sid, p.userId);
       peers.set(p.sid, peer);
-      for (const d of early.get(p.sid) || []) peer.onSignal(d);
+      const waiting = early.get(p.sid) || [];
       early.delete(p.sid);
+      for (const d of waiting) routeSignal({ from: p.sid, data: d });
       if (settled) sounds.peerJoin();
     }
+    peer.missingSince = 0;
     const wasSharing = !!peer.state?.screen;
     peer.state = p.state || {};
     // alguém começou/parou de transmitir: som (como no Discord)
@@ -587,16 +699,45 @@ export function onVoiceUpdate(roomId, parts) {
     if (settled && wasSharing && !peer.state.screen) sounds.streamStop();
     if (!peer.state.screen && watching[p.sid]) watching = { ...watching, [p.sid]: false };
   }
+  // sumiu da presença: espera um pouco antes de desligar (a presença pisca quando a rede oscila
+  // e desligar na hora deixava a conexão do outro lado "pendurada", um sem ouvir o outro)
+  const now = Date.now();
   for (const [sid, peer] of peers) {
     if (seen.has(sid)) continue;
+    if (!peer.missingSince) peer.missingSince = now;
+    if (now - peer.missingSince < GRACE && peer.pc.connectionState !== 'closed') { seen.add(sid); continue; }
     peer.close();
     peers.delete(sid);
     sounds.peerLeave();
     if (watching[sid]) watching = { ...watching, [sid]: false };
   }
   const f = S.call.focus;
-  patchCall({ watching, focus: f && typeof f === 'object' && !seen.has(f.sid) && f.sid !== api.clientId ? null : f });
+  const focus = f && typeof f === 'object' && !seen.has(f.sid) && f.sid !== api.clientId ? null : f;
+  if (watching !== S.call.watching || focus !== f) patchCall({ watching, focus });
+  if (peers.size !== lastCount) { lastCount = peers.size; tuneGroup(); }
   applyVolumes();
+}
+const GRACE = 10000;
+let lastCount = 0;
+/** chamada grande: cada um manda áudio/câmera para todos (malha), então baixa o peso conforme cresce */
+function groupScale() {
+  const n = peers.size + 1;
+  return n <= 4 ? 1 : n <= 8 ? 0.6 : n <= 12 ? 0.4 : 0.25;
+}
+function tuneGroup() {
+  const k = groupScale();
+  for (const p of peers.values()) {
+    for (const kind of ['mic', 'cam']) {
+      for (const t of p.tx[kind] || []) {
+        const prm = t.sender.getParameters();
+        if (!prm.encodings?.length) continue;
+        const base = encodings(kind, t.sender.track?.kind || 'audio')[0];
+        prm.encodings[0].maxBitrate = base.maxBitrate;
+        if (base.scaleResolutionDownBy) prm.encodings[0].scaleResolutionDownBy = base.scaleResolutionDownBy;
+        t.sender.setParameters(prm).catch(() => {});
+      }
+    }
+  }
 }
 
 function onWatch({ from, watch, q }) {

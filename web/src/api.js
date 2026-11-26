@@ -532,6 +532,7 @@ export async function recentActivity(uid) {
   return data || [];
 }
 
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function onPresenceSync() {
   if (!globalChan) return;
   const all = globalChan.presenceState(); // { clientId: [meta, ...] }
@@ -553,8 +554,20 @@ function onPresenceSync() {
   }
   for (const list of Object.values(voice)) list.sort((a, b) => a.joinedAt - b.joinedAt);
   const prevVoice = S.voice;
-  set((s) => { s.online = online; s.voice = voice; s.games = games; s.musics = musics; s.pcs = pcs; });
+  // salas que não mudaram mantêm a mesma lista: a tela da chamada não redesenha a cada presença de qualquer pessoa online
+  const changed = [];
   for (const room of new Set([...Object.keys(prevVoice), ...Object.keys(voice)])) {
+    if (voice[room] && prevVoice[room] && JSON.stringify(voice[room]) === JSON.stringify(prevVoice[room])) voice[room] = prevVoice[room];
+    else changed.push(room);
+  }
+  set((s) => {
+    s.online = sameJson(s.online, online) ? s.online : online;
+    s.voice = changed.length ? voice : s.voice;
+    s.games = sameJson(s.games, games) ? s.games : games;
+    s.musics = sameJson(s.musics, musics) ? s.musics : musics;
+    s.pcs = sameJson(s.pcs, pcs) ? s.pcs : pcs;
+  });
+  for (const room of changed) {
     rtc.onVoiceUpdate(room, voice[room] || []);
     if (S.outgoing?.dmId === room && (voice[room] || []).some((p) => p.userId !== S.uid)) {
       sounds.stopRing();
@@ -616,18 +629,22 @@ export function sendTyping(channelId) {
   sendEvent({ type: 'typing', channelId });
 }
 
-// ---------- sinalização WebRTC (por sala) ----------
-let pendingCands = {};
-let candTimer = null;
+// ---------- sinalização WebRTC ----------
+// Cada app tem a sua "caixa de entrada" (canal inbox:<id>) e os sinais vão direto para a caixa de quem recebe,
+// em lotes por HTTP. Antes ia tudo por um canal da sala que entregava cada mensagem para TODO mundo:
+// com muita gente na chamada isso estourava o limite do servidor e as conexões não fechavam.
+let outbox = [];
+let outTimer = null;
 export async function joinRoomChannel(roomId, handlers) {
   roomInfo = { id: roomId, handlers };
   const old = roomChan;
   roomChan = null;
   if (old) await sb.removeChannel(old).catch(() => {});
-  const ch = sb.channel('room:' + roomId, { config: { broadcast: { self: false, ack: false } } })
-    .on('broadcast', { event: 'sig' }, ({ payload }) => { if (payload.to === clientId) handlers.signal(payload); })
-    .on('broadcast', { event: 'watch' }, ({ payload }) => { if (payload.to === clientId) handlers.watch(payload); })
-    .on('broadcast', { event: 'nsig' }, ({ payload }) => { if (payload.to === clientId) handlers.nsignal(payload); });
+  const mine = (payload) => payload.room === roomInfo?.id;
+  const ch = sb.channel('inbox:' + clientId, { config: { broadcast: { self: false, ack: false } } })
+    .on('broadcast', { event: 'sig' }, ({ payload }) => { if (mine(payload)) handlers.signal(payload); })
+    .on('broadcast', { event: 'watch' }, ({ payload }) => { if (mine(payload)) handlers.watch(payload); })
+    .on('broadcast', { event: 'nsig' }, ({ payload }) => { if (mine(payload)) handlers.nsignal(payload); });
   roomChan = ch;
   await new Promise((res, rej) => {
     const t = setTimeout(() => rej(new Error('tempo esgotado')), 15000);
@@ -636,38 +653,55 @@ export async function joinRoomChannel(roomId, handlers) {
 }
 export async function leaveRoomChannel() {
   roomInfo = null;
-  clearTimeout(candTimer);
-  pendingCands = {};
+  clearTimeout(outTimer);
+  outTimer = null;
+  outbox = [];
   const old = roomChan;
   roomChan = null;
   if (old) await sb.removeChannel(old).catch(() => {});
 }
-/** envia SDP na hora; candidatos ICE em lotes (economiza eventos do plano grátis) */
-export function sendSignal(to, data) {
-  if (!roomChan) return;
-  if (data.candidate) {
-    (pendingCands[to] ||= []).push(data.candidate);
-    if (!candTimer) candTimer = setTimeout(flushCands, 180);
-    return;
+function post(to, event, payload) {
+  if (!roomInfo) return;
+  const full = { ...payload, to, from: clientId, room: roomInfo.id };
+  // candidatos ICE seguidos para a mesma pessoa vão juntos numa mensagem só
+  if (event === 'sig' && payload.data?.candidate) {
+    const last = outbox.findLast((m) => m.to === to);
+    if (last?.payload.data?.candidates && last.payload.data.pid === payload.data.pid) last.payload.data.candidates.push(payload.data.candidate);
+    else outbox.push({ to, event, payload: { ...full, data: { pid: payload.data.pid, candidates: [payload.data.candidate] } } });
+  } else outbox.push({ to, event, payload: full });
+  if (!outTimer) outTimer = setTimeout(flushOutbox, event === 'sig' && payload.data?.candidate ? 150 : 30);
+}
+// um envio por vez: a ordem importa (oferta antes da resposta, descrição antes dos candidatos)
+let sending = Promise.resolve();
+function flushOutbox() {
+  outTimer = null;
+  sending = sending.then(sendOutbox);
+}
+async function sendOutbox() {
+  const batch = outbox.splice(0, outbox.length);
+  for (let i = 0; i < batch.length; i += 40) {
+    const part = batch.slice(i, i + 40);
+    const body = JSON.stringify({ messages: part.map((m) => ({ topic: 'inbox:' + m.to, event: m.event, payload: m.payload, private: false })) });
+    for (let tries = 0; ; tries++) {
+      try {
+        const r = await fetch(SUPABASE_URL + '/realtime/v1/api/broadcast', {
+          method: 'POST',
+          headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + (sb.realtime.accessTokenValue || SUPABASE_KEY), 'Content-Type': 'application/json' },
+          body,
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        break;
+      } catch (e) {
+        if (tries >= 3 || !roomInfo) { console.warn('sinalização: não enviou', e); break; }
+        await new Promise((r) => setTimeout(r, 300 * (tries + 1)));
+      }
+    }
   }
-  flushCands();
-  roomChan.send({ type: 'broadcast', event: 'sig', payload: { to, from: clientId, data } });
 }
-function flushCands() {
-  clearTimeout(candTimer);
-  candTimer = null;
-  for (const [to, list] of Object.entries(pendingCands)) {
-    roomChan?.send({ type: 'broadcast', event: 'sig', payload: { to, from: clientId, data: { candidates: list } } });
-  }
-  pendingCands = {};
-}
-/** sinalização da tela nativa do celular (conexão separada, sem lote) */
-export function sendNativeSignal(to, data) {
-  roomChan?.send({ type: 'broadcast', event: 'nsig', payload: { to, from: clientId, data } });
-}
-export function sendWatch(to, watch, q = null) {
-  roomChan?.send({ type: 'broadcast', event: 'watch', payload: { to, from: clientId, watch, q } });
-}
+export function sendSignal(to, data) { post(to, 'sig', { data }); }
+/** sinalização da tela nativa do celular (conexão separada) */
+export function sendNativeSignal(to, data) { post(to, 'nsig', { data }); }
+export function sendWatch(to, watch, q = null) { post(to, 'watch', { watch, q }); }
 
 // ---------- operações ----------
 export async function fetchMessages(cid, beforeTs) {

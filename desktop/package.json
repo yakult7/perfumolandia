@@ -1,7 +1,7 @@
 {
   "name": "perfumolandia-desktop",
   "productName": "Perfumolandia",
-  "version": "1.10.20",
+  "version": "1.10.21",
   "description": "Perfumolandia para Windows",
   "main": "main.js",
   "private": true,
