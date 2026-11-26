@@ -235,3 +235,6 @@
 .fp-recent-main b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fp-recent-main span { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fp-recent-main small { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-3); margin-top: 2px; }
+
+/* acesso remoto no app do Windows: a tela do amigo fica abaixo dos botões da janela e acima da barra de tarefas */
+html.desktop-app .rc-view { top: 34px; }

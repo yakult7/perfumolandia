@@ -114,9 +114,10 @@ function RemoteView({ r }) {
   const toggleFull = async () => {
     const d = window.perfumolandiaDesktop;
     if (document.fullscreenElement || full) { await document.exitFullscreen().catch(() => {}); navigator.keyboard?.unlock?.(); d?.setFullScreen?.(false); setFull(false); return; }
-    if (d?.setFullScreen) await d.setFullScreen(true);
+    // app do Windows: ocupa a tela toda acima da sua barra de tarefas (as teclas já vão pelo kbhook)
+    if (d?.setFullScreen) { await d.setFullScreen(true); setFull(true); return; }
     await wrap.current.requestFullscreen().catch(() => {});
-    navigator.keyboard?.lock?.().catch(() => {}); // em tela cheia, até Esc e atalhos vão para o PC do amigo
+    navigator.keyboard?.lock?.().catch(() => {}); // navegador: em tela cheia, até Esc e atalhos vão para o PC do amigo
     setFull(true);
   };
   useEffect(() => { const f = () => !document.fullscreenElement && setFull(false); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f); }, []);

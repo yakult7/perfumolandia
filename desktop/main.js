@@ -311,15 +311,32 @@ ipcMain.on('rc:input', (e, m) => {
 });
 ipcMain.handle('rc:stop', () => stopRemote());
 // tela cheia da janela (acesso remoto: a tela do amigo inteira, sem a barra de tarefas cobrindo)
-ipcMain.handle('win:fullscreen', (e, on) => { if (win) win.setFullScreen(!!on); return !!on; });
+// "tela cheia" do acesso remoto: ocupa a área livre da tela sem cobrir a barra de tarefas
+ipcMain.handle('win:fullscreen', (e, on) => { if (on) fitWorkArea(); else if (win?.isFullScreen()) win.setFullScreen(false); return !!on; });
 
 // quem controla: janela maximizada (sua barra de tarefas visível) e o teclado inteiro (Alt+Tab, Windows...) indo
 // para o PC do amigo enquanto esta janela estiver em foco — kbhook.exe intercepta e o app repassa
-let kb = null, maximizedByRc = false;
+let kb = null, maximizedByRc = false, rcPrevBounds = null;
+// acesso remoto: janela ocupa exatamente a área livre da tela (acima da barra de tarefas).
+// maximize() numa janela sem moldura às vezes cobre a barra; tela cheia sempre cobre.
+function fitWorkArea() {
+  if (!win) return;
+  if (win.isFullScreen()) win.setFullScreen(false);
+  if (!rcPrevBounds) rcPrevBounds = win.isMaximized() ? null : win.getBounds();
+  if (win.isMaximized()) win.unmaximize();
+  win.setBounds(screen.getDisplayMatching(win.getBounds()).workArea);
+  maximizedByRc = true;
+}
+function restoreFromWorkArea() {
+  if (!maximizedByRc || !win) return;
+  if (rcPrevBounds) win.setBounds(rcPrevBounds); else win.maximize();
+  rcPrevBounds = null;
+  maximizedByRc = false;
+}
 ipcMain.handle('rc:viewer', (e, on) => {
   if (!win) return false;
   if (on) {
-    if (!win.isMaximized() && !win.isFullScreen()) { win.maximize(); maximizedByRc = true; }
+    fitWorkArea();
     const exe = app.isPackaged ? path.join(process.resourcesPath, 'kbhook.exe') : path.join(__dirname, 'kbhook.exe');
     if (process.platform === 'win32' && fs.existsSync(exe) && !kb) {
       const hwnd = win.getNativeWindowHandle();
@@ -342,8 +359,7 @@ ipcMain.handle('rc:viewer', (e, on) => {
     return !!kb;
   }
   if (kb) { try { kb.stdin.end(); kb.kill(); } catch {} kb = null; }
-  if (maximizedByRc && win.isMaximized()) win.unmaximize();
-  maximizedByRc = false;
+  restoreFromWorkArea();
   return false;
 });
 app.on('will-quit', () => { try { kb?.kill(); } catch {} });
