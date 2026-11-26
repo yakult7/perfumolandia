@@ -1,6 +1,6 @@
 // Motor de chamadas: WebRTC em malha (cada um conecta direto com cada um).
 // Voz e câmera vão para todos. A tela só é enviada para quem clica em "Assistir" (economiza upload em 4K).
-import { S, set, setUI } from './store.js';
+import { S, set, setUI, setSettings } from './store.js';
 import * as api from './api.js';
 import { startSysAudio } from './sysaudio.js';
 import { sounds, audioCtx } from './sounds.js';
@@ -228,6 +228,7 @@ class Peer {
   detachAudio(id) {
     const el = this.audio.get(id);
     if (el) { el.srcObject = null; el.remove(); }
+    unboost(el);
     this.audio.delete(id);
     unwatchLevel(id);
   }
@@ -321,11 +322,44 @@ export function applyVolumes() {
     for (const [id, el] of p.audio) {
       const kind = p.kindOf(id);
       const v = kind === 'screen' ? st.streamVolumes[p.userId] ?? 1 : kind === 'music' ? (st.musicMuted ? 0 : st.musicVolume ?? 0.6) : st.userVolumes[p.userId] ?? 1;
-      el.volume = Math.max(0, Math.min(1, v));
-      el.muted = !!S.call?.deafened || (kind === 'screen' && !S.call?.watching?.[p.sid]);
+      const muted = !!S.call?.deafened || (kind === 'screen' && !S.call?.watching?.[p.sid]);
+      if (v > 1 && boost(el, v, muted)) {
+        // acima de 100%: o som sai amplificado pelo Web Audio; o elemento fica mudo só para manter o áudio chegando
+        el.volume = 1;
+        el.muted = true;
+      } else {
+        unboost(el);
+        el.volume = Math.max(0, Math.min(1, v));
+        el.muted = muted;
+      }
       if (el.setSinkId && st.outputDevice && st.outputDevice !== 'default') el.setSinkId(st.outputDevice).catch(() => {});
     }
   }
+  const ctx = boosts.size && audioCtx();
+  if (ctx?.setSinkId) ctx.setSinkId(st.outputDevice && st.outputDevice !== 'default' ? st.outputDevice : '').catch(() => {});
+}
+// volume acima de 100% (até 200%): elemento de áudio não passa de 1, então usa um ganho do Web Audio
+const boosts = new Map();
+function boost(el, v, muted) {
+  try {
+    let b = boosts.get(el);
+    if (!b) {
+      const ctx = audioCtx();
+      const src = ctx.createMediaStreamSource(el.srcObject);
+      const gain = ctx.createGain();
+      src.connect(gain).connect(ctx.destination);
+      b = { src, gain };
+      boosts.set(el, b);
+    }
+    b.gain.gain.value = muted ? 0 : Math.min(2, v);
+    return true;
+  } catch { return false; }
+}
+function unboost(el) {
+  const b = el && boosts.get(el);
+  if (!b) return;
+  try { b.src.disconnect(); b.gain.disconnect(); } catch {}
+  boosts.delete(el);
 }
 export function unlockAudio() {
   for (const p of peers.values()) for (const el of p.audio.values()) el.play().catch(() => {});
@@ -399,14 +433,40 @@ export async function getMic() {
     if (st.inputDevice !== 'default' && e.name === 'OverconstrainedError') raw = await navigator.mediaDevices.getUserMedia({ audio: base });
     else throw e;
   }
-  if (mode !== 'smart') return raw;
+  if (mode !== 'smart') return withMicGain(raw);
   try {
     const { denoise } = await import('./noise.js');
-    return await denoise(raw);
+    return withMicGain(await denoise(raw));
   } catch (e) {
     console.warn('RNNoise indisponível, usando o microfone direto', e);
-    return raw;
+    return withMicGain(raw);
   }
+}
+// volume do microfone (0–200%): ganho do Web Audio entre o microfone e o que é enviado
+const micGains = new Set();
+function withMicGain(stream) {
+  try {
+    const ctx = audioCtx();
+    const src = ctx.createMediaStreamSource(stream);
+    const g = ctx.createGain();
+    g.gain.value = S.settings.micVolume ?? 1;
+    const dest = ctx.createMediaStreamDestination();
+    dest.channelCount = 1;
+    src.connect(g).connect(dest);
+    micGains.add(g);
+    const out = dest.stream;
+    out.cleanup = () => {
+      try { src.disconnect(); g.disconnect(); } catch {}
+      micGains.delete(g);
+      if (stream.cleanup) stream.cleanup();
+      else stream.getTracks().forEach((t) => t.stop());
+    };
+    return out;
+  } catch { return stream; }
+}
+export function setMicVolume(v) {
+  setSettings({ micVolume: v });
+  for (const g of micGains) g.gain.value = v;
 }
 function micShouldBeOn() {
   const c = S.call;

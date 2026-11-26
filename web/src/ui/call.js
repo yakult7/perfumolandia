@@ -400,7 +400,7 @@ export function VolumeModal({ uid, kind }) {
     <${Modal} title=${kind === 'screen' ? 'Volume da transmissão' : 'Volume de ' + (u?.displayName || '')}>
       <div class="vol-row">
         <${Icon} n="volume" s=${18} />
-        <input type="range" min="0" max="1" step="0.01" value=${v}
+        <input type="range" min="0" max="2" step="0.01" value=${v}
           onInput=${(e) => { setSettings({ [key]: { ...st[key], [uid]: +e.target.value } }); rtc.applyVolumes(); }} />
         <b>${Math.round(v * 100)}%</b>
       </div>

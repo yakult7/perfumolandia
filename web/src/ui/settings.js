@@ -275,6 +275,12 @@ function Voice() {
         <button class=${cx('gbtn sm', testing === 'listen' && 'on')} title="Toca sua voz de volta (use fone)" onClick=${() => setTesting(testing === 'listen' ? false : 'listen')}>${testing === 'listen' ? 'Parar' : 'Ouvir minha voz'}</button>
         <div class="meter" ref=${meter}><i></i></div></div>
     </div>
+    <div class="field"><span class="field-label">Volume do microfone</span>
+      <div class="vol-row"><${Icon} n="mic" s=${18} />
+        <input type="range" min="0" max="2" step="0.05" value=${st.micVolume ?? 1} aria-label="Volume do microfone" onInput=${(e) => rtc.setMicVolume(+e.target.value)} />
+        <b>${Math.round((st.micVolume ?? 1) * 100)}%</b></div>
+      <small class="muted">Acima de 100% sua voz sai mais alta para todo mundo na chamada.</small>
+    </div>
     <div class="field"><span class="field-label">Modo de entrada</span>
       <div class="chips">
         <button class=${cx('chip', st.inputMode === 'voice' && 'on')} onClick=${() => setSettings({ inputMode: 'voice' })}>Detecção de voz</button>
