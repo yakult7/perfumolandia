@@ -49,7 +49,7 @@ export const mapMsg = (m) => ({
 });
 /** quem me bloqueou: não vejo foto, bio, banner nem status da pessoa */
 const hide = (u) => (u && S.blockedBy[u.id] ? { ...u, avatar: null, bio: '', banner: null, customStatus: '', pronouns: '', accent: null, decoration: null, effect: null, frame: null, nameplate: null } : u);
-const mapRel = (r) => ({ id: r.id, from: r.from_id, to: r.to_id, status: r.status });
+const mapRel = (r) => ({ id: r.id, from: r.from_id, to: r.to_id, status: r.status, createdAt: r.created_at ? Date.parse(r.created_at) : null });
 const mapDm = (d) => ({ id: d.id, members: [d.user_a, d.user_b] });
 const mapServer = (s, members = [], channels = []) => ({
   id: s.id, name: s.name, icon: s.icon_url, ownerId: s.owner_id, invite: s.invite, members,

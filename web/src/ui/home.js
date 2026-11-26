@@ -174,7 +174,7 @@ export function DMList() {
   return html`
     <div class="dmlist">
       <button class="find-btn" onClick=${() => openModal('search')}><${Icon} n="search" s=${15} /><span>Buscar amigos ou mensagens</span></button>
-      <button class=${cx('ch big', !cur && !shopOn && 'on')} onClick=${() => { set((s) => { s.view = { serverId: null, channelId: null, homeTab: s.view.homeTab === 'add' ? 'online' : s.view.homeTab }; s.ui = { ...s.ui, tab: 'friends', pane: 'list', stage: false }; }); }}>
+      <button class=${cx('ch big', !cur && !shopOn && 'on')} onClick=${() => { set((s) => { s.view = { serverId: null, channelId: null, homeTab: ['add', 'shop'].includes(s.view.homeTab) ? 'online' : s.view.homeTab }; s.ui = { ...s.ui, tab: 'friends', pane: 'list', stage: false }; }); }}>
         <${Icon} n="users" s=${18} /><span>Amigos</span>
       </button>
       <button class=${cx('ch big', shopOn && 'on')} onClick=${() => set((s) => { s.view = { serverId: null, channelId: null, homeTab: 'shop' }; s.ui = { ...s.ui, stage: false }; })}><${Icon} n="gift" s=${18} /><span>Loja</span><span class="new-pill">Novo</span></button>

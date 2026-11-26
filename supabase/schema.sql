@@ -602,3 +602,16 @@ grant execute on function public.save_push_sub(text, text, jsonb) to authenticat
 -- configurações do push que só o servidor lê (chaves do Web Push, criadas pela função call-push)
 create table if not exists public.push_config (key text primary key, value jsonb not null);
 alter table public.push_config enable row level security;
+
+-- ---------- amigos em comum (perfil completo) ----------
+-- só devolve amigos que também são seus (não expõe a lista de amigos de ninguém)
+create or replace function public.mutual_friends(other uuid) returns setof uuid
+language sql security definer set search_path = public stable as $$
+  select case when from_id = auth.uid() then to_id else from_id end from relations
+    where status = 'accepted' and auth.uid() in (from_id, to_id)
+  intersect
+  select case when from_id = other then to_id else from_id end from relations
+    where status = 'accepted' and other in (from_id, to_id);
+$$;
+revoke all on function public.mutual_friends(uuid) from public;
+grant execute on function public.mutual_friends(uuid) to authenticated;
